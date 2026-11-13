@@ -684,11 +684,8 @@ public class HomeActivity extends Activity {
     }
 
     private int panelHeight() {
-        // Small compact bar for top/bottom placement.
-        int h = dp(56);
-        if (columns >= 3) h = dp(64);
-        if (columns >= 4) h = dp(72);
-        return h;
+        int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
+        return dp(72 * rowCount + 8);
     }
 
     private void setColumns(int n) {
@@ -905,15 +902,6 @@ public class HomeActivity extends Activity {
         bar.setPadding(dp(8), dp(4), dp(8), dp(4));
         bar.setGravity(Gravity.CENTER_VERTICAL);
 
-        // main compact shortcuts
-        ScrollView scroller = new ScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        scroller.setVerticalScrollBarEnabled(false);
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        // app tile list compact
         List<View> tiles = new ArrayList<>();
         View home = appTile(navApp());
         home.setOnClickListener(v -> goHome());
@@ -922,29 +910,57 @@ public class HomeActivity extends Activity {
         List<String> list = shortcuts();
         for (String entry : list) {
             if (navApp().equals(entry.split("/")[0])) continue;
-            View t = null;
-            if (isWazeEntry(entry)) t = wazeTile(entry);
-            else if (entry.contains("/")) t = activityTile(ComponentName.unflattenFromString(entry));
-            else if (pm.getLaunchIntentForPackage(entry) != null) t = appTile(entry);
-            if (t != null) tiles.add(editing ? editable(t, tiles.size() - 1, list.size()) : t);
+
+            View tile = null;
+            if (isWazeEntry(entry)) tile = wazeTile(entry);
+            else if (entry.contains("/")) tile = activityTile(ComponentName.unflattenFromString(entry));
+            else if (pm.getLaunchIntentForPackage(entry) != null) tile = appTile(entry);
+
+            if (tile != null) {
+                tiles.add(editing ? editable(tile, tiles.size() - 1, list.size()) : tile);
+            }
         }
 
         if (editing) {
             tiles.add(iconTile("+", "Add", v -> showPicker()));
-            tiles.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
+            tiles.add(iconTile("✓", "Done", v -> {
+                editing = false;
+                rebuildPanel();
+            }));
         } else {
             tiles.add(iconTile("☷", "All apps", v -> showBrowser()));
             tiles.add(optionsTile());
         }
 
-        for (View tile : tiles) {
-            row.addView(tile, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+        int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
+        int tilesPerRow = (tiles.size() + rowCount - 1) / rowCount;
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+    
+        for (int rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+            HorizontalScrollView scroller = new HorizontalScrollView(this);
+            scroller.setHorizontalScrollBarEnabled(false);
+            scroller.setVerticalScrollBarEnabled(false);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+
+            int start = rowIndex * tilesPerRow;
+            int end = Math.min(start + tilesPerRow, tiles.size());
+            for (int i = start; i < end; i++) {
+                row.addView(tiles.get(i), new LinearLayout.LayoutParams(
+                        dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+
+            scroller.addView(row);
+            rows.addView(scroller, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         }
 
-        scroller.addView(row);
-        bar.addView(scroller, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        bar.addView(rows, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
-        // right side compact controls
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
@@ -955,11 +971,12 @@ public class HomeActivity extends Activity {
 
         String place = signalPlace();
         if ("bottom".equals(place) || "top".equals(place)) {
-            View sig = signalsRowCompact();
-            actions.addView(sig, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            actions.addView(signalsRowCompact(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
-        bar.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bar.addView(actions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         return bar;
     }
@@ -1226,7 +1243,10 @@ public class HomeActivity extends Activity {
         top.addView(text("Options", 16, ACCENT), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         top.addView(choice("Done", true, v -> { settingsOpen = false; rebuildPanel(); }));
         s.addView(top);
-        s.addView(text(n >= 2 ? "Icons per row" : "Icons", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 10));
+        String layoutLabel = ("top".equals(panelPos) || "bottom".equals(panelPos))
+                ? "Number of rows"
+                : (n >= 2 ? "Icons per row" : "Icons");
+        s.addView(text(layoutLabel, 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 10));
 
         LinearLayout stepper = new LinearLayout(this);
         stepper.setOrientation(LinearLayout.HORIZONTAL);
