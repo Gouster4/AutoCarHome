@@ -173,8 +173,26 @@ public class HomeActivity extends Activity {
             if (s != null && s.getState() == PlaybackState.STATE_PLAYING) pickController();
         }
     };
+    
     private final MediaSessionManager.OnActiveSessionsChangedListener sessionsListener = list -> pickController();
-
+    private View compactMediaControls;
+    private View compactTrackInfo;
+    private final Runnable restoreCompactMediaControls = () -> {
+        if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
+        if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
+    };
+    @Override
+    
+    public void onMetadataChanged(MediaMetadata m) {
+        metadata = m;
+        showMedia();
+        if (compactMediaControls != null && compactTrackInfo != null) {
+            main.removeCallbacks(restoreCompactMediaControls);
+            compactMediaControls.setVisibility(View.GONE);
+            compactTrackInfo.setVisibility(View.VISIBLE);
+            main.postDelayed(restoreCompactMediaControls, 3000);
+        }
+    }
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -908,13 +926,20 @@ public class HomeActivity extends Activity {
 
         List<View> userTiles = new ArrayList<>();
 
-        // Keep Home first, then the app drawer, before the user's shortcuts.
+        icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
+                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+        if (prefs.getBoolean("show_mic", false)) {
+            FrameLayout micSlot = new FrameLayout(this);
+                micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
+                    dp(34), dp(34), Gravity.CENTER));
+            icons.addView(micSlot,
+                    new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+
         View home = appTile(navApp());
         home.setOnClickListener(v -> goHome());
-        icons.addView(home, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
-                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+        icons.addView(home, new LinearLayout.LayoutParams(
+                dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
 
         List<String> list = shortcuts();
         for (String entry : list) {
@@ -945,10 +970,6 @@ public class HomeActivity extends Activity {
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
-
-        if (prefs.getBoolean("show_mic", false)) {
-            actions.addView(assistantButton(), new LinearLayout.LayoutParams(dp(34), dp(34)));
-        }
 
         String place = signalPlace();
         if ("bottom".equals(place) || "top".equals(place)) {
