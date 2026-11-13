@@ -162,27 +162,6 @@ public class HomeActivity extends Activity {
     private MediaMetadata metadata;
     private PlaybackState playback;
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
-        @Override public void onMetadataChanged(MediaMetadata m) { metadata = m; showMedia(); }
-        @Override public void onPlaybackStateChanged(PlaybackState s) { playback = s; showMedia(); }
-        @Override public void onSessionDestroyed() { pickController(); }
-    };
-
-    private final List<MediaController> watched = new ArrayList<>();
-    private final MediaController.Callback watcher = new MediaController.Callback() {
-        @Override public void onPlaybackStateChanged(PlaybackState s) {
-            if (s != null && s.getState() == PlaybackState.STATE_PLAYING) pickController();
-        }
-    };
-    
-    private final MediaSessionManager.OnActiveSessionsChangedListener sessionsListener = list -> pickController();
-    private View compactMediaControls;
-    private View compactTrackInfo;
-    private final Runnable restoreCompactMediaControls = () -> {
-        if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
-        if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
-    };
-
-private final MediaController.Callback mediaCallback = new MediaController.Callback() {
     @Override
     public void onMetadataChanged(MediaMetadata m) {
         metadata = m;
@@ -207,6 +186,22 @@ private final MediaController.Callback mediaCallback = new MediaController.Callb
         pickController();
     }
 };
+
+    private final List<MediaController> watched = new ArrayList<>();
+    private final MediaController.Callback watcher = new MediaController.Callback() {
+        @Override public void onPlaybackStateChanged(PlaybackState s) {
+            if (s != null && s.getState() == PlaybackState.STATE_PLAYING) pickController();
+        }
+    };
+    
+    private final MediaSessionManager.OnActiveSessionsChangedListener sessionsListener = list -> pickController();
+    private View compactMediaControls;
+    private View compactTrackInfo;
+    private final Runnable restoreCompactMediaControls = () -> {
+        if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
+        if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
+    };
+
     
     @Override
     protected void onCreate(Bundle state) {
