@@ -883,6 +883,16 @@ public class HomeActivity extends Activity {
 
     private View buildPanel() {
         if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
+                if (settingsOpen) {
+                    ScrollView scroller = new ScrollView(this);
+                    scroller.setFillViewport(true);
+                    scroller.setVerticalScrollBarEnabled(false);
+                    scroller.setBackgroundColor(BG);
+                    scroller.setPadding(dp(12), dp(12), dp(12), dp(12));
+                    scroller.addView(buildSettings(columns));
+                    return scroller;
+                }
+
             return buildCompactBar();
         }
         return buildSidePanel();
