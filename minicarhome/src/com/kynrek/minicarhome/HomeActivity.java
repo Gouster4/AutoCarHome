@@ -181,11 +181,13 @@ public class HomeActivity extends Activity {
         if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
         if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
     };
+
+private final MediaController.Callback mediaCallback = new MediaController.Callback() {
     @Override
-    
     public void onMetadataChanged(MediaMetadata m) {
         metadata = m;
         showMedia();
+
         if (compactMediaControls != null && compactTrackInfo != null) {
             main.removeCallbacks(restoreCompactMediaControls);
             compactMediaControls.setVisibility(View.GONE);
@@ -193,6 +195,19 @@ public class HomeActivity extends Activity {
             main.postDelayed(restoreCompactMediaControls, 3000);
         }
     }
+
+    @Override
+    public void onPlaybackStateChanged(PlaybackState s) {
+        playback = s;
+        showMedia();
+    }
+
+    @Override
+    public void onSessionDestroyed() {
+        pickController();
+    }
+};
+    
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
