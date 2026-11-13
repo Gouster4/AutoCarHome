@@ -894,7 +894,7 @@ public class HomeActivity extends Activity {
         }
         return buildSidePanel();
     }
-
+    
     private View buildCompactBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -902,64 +902,45 @@ public class HomeActivity extends Activity {
         bar.setPadding(dp(8), dp(4), dp(8), dp(4));
         bar.setGravity(Gravity.CENTER_VERTICAL);
 
-        List<View> tiles = new ArrayList<>();
+        LinearLayout icons = new LinearLayout(this);
+        icons.setOrientation(LinearLayout.HORIZONTAL);
+        icons.setGravity(Gravity.CENTER_VERTICAL);
+
+        List<View> userTiles = new ArrayList<>();
+
+        // Keep Home first, then the app drawer, before the user's shortcuts.
         View home = appTile(navApp());
         home.setOnClickListener(v -> goHome());
-        tiles.add(home);
+        icons.addView(home, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
+                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         List<String> list = shortcuts();
         for (String entry : list) {
             if (navApp().equals(entry.split("/")[0])) continue;
-
+    
             View tile = null;
             if (isWazeEntry(entry)) tile = wazeTile(entry);
             else if (entry.contains("/")) tile = activityTile(ComponentName.unflattenFromString(entry));
             else if (pm.getLaunchIntentForPackage(entry) != null) tile = appTile(entry);
 
             if (tile != null) {
-                tiles.add(editing ? editable(tile, tiles.size() - 1, list.size()) : tile);
+                if (editing) tile = editable(tile, userTiles.size(), list.size());
+                userTiles.add(tile);
+                icons.addView(tile, new LinearLayout.LayoutParams(
+                        dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
             }
         }
 
         if (editing) {
-            tiles.add(iconTile("+", "Add", v -> showPicker()));
-            tiles.add(iconTile("✓", "Done", v -> {
+            icons.addView(iconTile("+", "Add", v -> showPicker()),
+                    new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+            icons.addView(iconTile("✓", "Done", v -> {
                 editing = false;
                 rebuildPanel();
-            }));
-        } else {
-            tiles.add(iconTile("☷", "All apps", v -> showBrowser()));
-            tiles.add(optionsTile());
+            }), new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-
-        int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        int tilesPerRow = (tiles.size() + rowCount - 1) / rowCount;
-        LinearLayout rows = new LinearLayout(this);
-        rows.setOrientation(LinearLayout.VERTICAL);
-    
-        for (int rowIndex = 0; rowIndex < rowCount; rowIndex++) {
-            HorizontalScrollView scroller = new HorizontalScrollView(this);
-            scroller.setHorizontalScrollBarEnabled(false);
-            scroller.setVerticalScrollBarEnabled(false);
-
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-
-            int start = rowIndex * tilesPerRow;
-            int end = Math.min(start + tilesPerRow, tiles.size());
-            for (int i = start; i < end; i++) {
-                row.addView(tiles.get(i), new LinearLayout.LayoutParams(
-                        dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
-            }
-
-            scroller.addView(row);
-            rows.addView(scroller, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        }
-
-        bar.addView(rows, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -972,15 +953,42 @@ public class HomeActivity extends Activity {
         String place = signalPlace();
         if ("bottom".equals(place) || "top".equals(place)) {
             actions.addView(signalsRowCompact(), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
+        LinearLayout weather = buildCompactWeather();
+
+        FrameLayout mediaSlot = new FrameLayout(this);
+        mediaSlot.setMinimumWidth(dp(170));
+        mediaSlot.addView(buildCompactMedia(), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+
+        bar.addView(icons, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bar.addView(mediaSlot, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
         bar.addView(actions, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bar.addView(weather, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // If the bar is crowded, drop user shortcuts from the end to reserve space
+        // for the media controls, actions, and right-aligned weather.
+        bar.post(() -> {
+            int minMediaWidth = dp(170);
+            int requiredWidth = minMediaWidth + actions.getMeasuredWidth()
+                    + weather.getMeasuredWidth() + dp(16);
+
+            for (int i = userTiles.size() - 1;
+                 i >= 0 && icons.getMeasuredWidth() + requiredWidth > bar.getWidth();
+                 i--) {
+                icons.removeView(userTiles.get(i));
+            }
+        });
 
         return bar;
     }
-
+    
     private View buildSidePanel() {
         int n = columns;
         wifiBars = cellBars = null;
@@ -1093,8 +1101,87 @@ public class HomeActivity extends Activity {
             if (id != 0) top = getResources().getDimensionPixelSize(id);
         }
         return top;
-    }
+}
 
+private LinearLayout buildCompactWeather() {
+    LinearLayout weather = new LinearLayout(this);
+    weather.setOrientation(LinearLayout.VERTICAL);
+    weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+    weather.setPadding(dp(8), 0, dp(4), 0);
+
+    weatherTemp = text("", 14, TEXT);
+    weatherTemp.setSingleLine(true);
+    weatherTemp.setGravity(Gravity.END);
+    weather.addView(weatherTemp);
+
+    weatherRange = text("", 11, DIM);
+    weatherRange.setSingleLine(true);
+    weatherRange.setGravity(Gravity.END);
+    weather.addView(weatherRange);
+
+    return weather;
+}
+
+private View buildCompactMedia() {
+    LinearLayout media = new LinearLayout(this);
+    media.setOrientation(LinearLayout.HORIZONTAL);
+    media.setGravity(Gravity.CENTER);
+    media.setPadding(dp(6), dp(2), dp(6), dp(2));
+
+    mediaArt = new ImageView(this);
+    mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+    mediaArt.setBackground(rounded(0xFF26323A, 8));
+    mediaArt.setClipToOutline(true);
+    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+    LinearLayout info = new LinearLayout(this);
+    info.setOrientation(LinearLayout.VERTICAL);
+    info.setGravity(Gravity.CENTER_VERTICAL);
+    info.setPadding(dp(6), 0, dp(4), 0);
+
+    mediaTitle = text("Nothing playing", 12, TEXT);
+    mediaTitle.setSingleLine(true);
+    mediaTitle.setEllipsize(TextUtils.TruncateAt.END);
+    info.addView(mediaTitle);
+
+    mediaArtist = text("", 10, DIM);
+    mediaArtist.setSingleLine(true);
+    mediaArtist.setEllipsize(TextUtils.TruncateAt.END);
+    info.addView(mediaArtist);
+
+    media.addView(info, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+    TextView previous = mediaButton("|◀", false, true);
+    previous.setContentDescription("Previous track");
+    previous.setOnClickListener(v -> {
+        if (controller != null) controller.getTransportControls().skipToPrevious();
+    });
+    media.addView(previous);
+
+    playButton = mediaButton("▶", false, true);
+    playButton.setContentDescription("Play or pause");
+    playButton.setOnClickListener(v -> togglePlay());
+    media.addView(playButton);
+
+    TextView next = mediaButton("▶|", false, true);
+    next.setContentDescription("Next track");
+    next.setOnClickListener(v -> {
+        if (controller != null) controller.getTransportControls().skipToNext();
+    });
+    media.addView(next);
+
+    progressRow = null;
+    mediaProgress = null;
+    mediaRemaining = null;
+
+    media.setOnClickListener(v -> {
+        if (controller != null) open(controller.getPackageName());
+    });
+
+    return media;
+}
+    
     private static final int DEFAULT_DENSITY = 160;
     private static final int[] DENSITIES = {120, 140, 160, 180, 200};
 
