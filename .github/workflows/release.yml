@@ -50,7 +50,10 @@ jobs:
 
       - name: Build and Sign BoxTools Companion App (Synced with AutoCarHome Signature)
         run: |
-          sudo apt-get update && sudo apt-get install -y apktool
+          # Install official standalone apktool to avoid Ubuntu package aapt extraction crash (exit code 134)
+          sudo wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
+          sudo wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar -O /usr/local/bin/apktool.jar
+          sudo chmod +x /usr/local/bin/apktool /usr/local/bin/apktool.jar
 
           # Locate build-tools tools (zipalign, apksigner)
           BUILD_TOOLS_DIR=$(ls -d /usr/local/lib/android/sdk/build-tools/36* | head -n 1)
