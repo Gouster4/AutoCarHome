@@ -834,8 +834,6 @@ public class HomeActivity extends Activity {
         if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
             width = wm.getMaximumWindowMetrics().getBounds().width();
             gravity = Gravity.TOP | Gravity.START;
-            wm.addView(browser, overlayParams(width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
-            return;
         }
 
         wm.addView(browser, overlayParams(width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
