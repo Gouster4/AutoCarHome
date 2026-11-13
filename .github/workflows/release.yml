@@ -58,4 +58,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versioning.outputs.tag_name }}
-          name: "AutoCarHome Release ${{ steps.
+          name: "AutoCarHome Release ${{ steps.versioning.outputs.tag_name }}"
+          files: minicarhome/out/minicarhome.apk
+          body: |
+            ### 🚗 AutoCarHome Automatic Build
+            Automated build compiled directly from commit `${{ github.sha }}`.
+            
+            **Changes included:**
+            - Automated build via GitHub Actions runner.
+            - Compiled with Android SDK 36 and Build-Tools 36.0.0.
+            - Signed with a consistent keystore for seamless updates.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
