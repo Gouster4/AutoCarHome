@@ -30,18 +30,80 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-         packages: 'platforms;android-36 build-tools;36.0.0'
+          packages: 'platforms;android-36 build-tools;36.0.0'
          
       - name: Restore Keystore from GitHub Secrets
         run: |
           mkdir -p ~/.android
           echo "${{ secrets.SIGNING_KEY_STORE_BASE64 }}" | base64 --decode > ~/.android/debug.keystore
+          if [ ! -s ~/.android/debug.keystore ]; then
+            echo "Error: debug.keystore is empty or failed to decode!"
+            exit 1
+          fi
+          echo "Keystore successfully restored."
 
       - name: Make build script executable and run it
         working-directory: minicarhome
         run: |
           chmod +x build.sh
           ./build.sh
+
+      - name: Build and Sign BoxTools Companion App (Synced with AutoCarHome Signature)
+        run: |
+          sudo apt-get update && sudo apt-get install -y apktool
+
+          # Locate build-tools tools (zipalign, apksigner)
+          BUILD_TOOLS_DIR=$(ls -d /usr/local/lib/android/sdk/build-tools/36* | head -n 1)
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+
+          # Extract SHA-256 certificate fingerprint directly from the built AutoCarHome APK
+          CERT_HASH=$($APKSIGNER verify --print-certs minicarhome/out/minicarhome.apk | grep "Signer #1 certificate SHA-256 digest:" | head -n 1 | awk '{print $NF}' | tr -d ':')
+          echo "Extracted AutoCarHome Certificate Hash: $CERT_HASH"
+
+          if [ -z "$CERT_HASH" ]; then
+            echo "Error: Failed to extract SHA-256 hash from AutoCarHome APK!"
+            exit 1
+          fi
+
+          # Download official BoxTools APK
+          curl -L -o boxtools.apk https://raw.githubusercontent.com/kynrek/BoxTools/main/apk/boxtools.apk
+
+          # Decompile BoxTools
+          apktool d boxtools.apk -o boxtools_src -f
+
+          # Python script to inject the extracted cert hash into boxtools arrays.xml
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          path = 'boxtools_src/res/values/arrays.xml'
+          tree = ET.parse(path)
+          root = tree.getroot()
+          for elem in root.findall('string-array'):
+              if elem.get('name') == 'known_certs':
+                  newItem = ET.Element('item')
+                  newItem.text = '$CERT_HASH'
+                  elem.append(newItem)
+          if hasattr(ET, 'indent'):
+              ET.indent(tree, space='    ')
+          tree.write(path, encoding='utf-8', xml_declaration=True)
+          "
+
+          # Rebuild BoxTools APK
+          apktool b boxtools_src -o boxtools-unsigned.apk
+
+          # Align APK
+          $ZIPALIGN -v 4 boxtools-unsigned.apk boxtools-aligned.apk
+
+          # Sign BoxTools with the same keystore
+          $APKSIGNER sign --ks ~/.android/debug.keystore \
+                         --ks-pass pass:android \
+                         --key-pass pass:android \
+                         boxtools-aligned.apk
+
+          mkdir -p final_out
+          mv boxtools-aligned.apk final_out/boxtools.apk
+          echo "BoxTools successfully built, patched, and signed."
+        shell: bash
 
       - name: Determine Version & Tag
         id: versioning
@@ -54,20 +116,21 @@ jobs:
           fi
           echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release and Upload APK
+      - name: Create GitHub Release and Upload APKs
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versioning.outputs.tag_name }}
           name: "AutoCarHome Release ${{ steps.versioning.outputs.tag_name }}"
-          files: minicarhome/out/minicarhome.apk
+          files: |
+            minicarhome/out/minicarhome.apk
+            final_out/boxtools.apk
           body: |
-            ### 🚗 AutoCarHome Automatic Build
+            ### 🚗 AutoCarHome & BoxTools Release
             Automated build compiled directly from commit `${{ github.sha }}`.
             
-            **Changes included:**
-            - Automated build via GitHub Actions runner.
-            - Compiled with Android SDK 36 and Build-Tools 36.0.0.
-            - Signed with a consistent keystore for seamless updates.
+            **Included Assets:**
+            - `minicarhome.apk` (Main app)
+            - `boxtools.apk` (Companion app automatically patched with AutoCarHome's exact signature)
           draft: false
           prerelease: false
         env:
