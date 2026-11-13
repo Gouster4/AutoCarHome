@@ -666,6 +666,10 @@ public class HomeActivity extends Activity {
     }
 
     private WindowManager.LayoutParams panelParams() {
+        if (settingsOpen) {
+            return overlayParams(WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT, Gravity.TOP | Gravity.START, false);
+        }
         if ("left".equals(panelPos) || "right".equals(panelPos)) {
             int g = "left".equals(panelPos) ? Gravity.TOP | Gravity.START : Gravity.TOP | Gravity.END;
             return overlayParams(panelWidth(), WindowManager.LayoutParams.MATCH_PARENT, g, false);
@@ -829,9 +833,8 @@ public class HomeActivity extends Activity {
         int gravity = "left".equals(panelPos) ? Gravity.TOP | Gravity.END : Gravity.TOP | Gravity.START;
         if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
             width = wm.getMaximumWindowMetrics().getBounds().width();
-            gravity = "top".equals(panelPos) ? Gravity.TOP | Gravity.START : Gravity.BOTTOM | Gravity.START;
-            wm.addView(browser, overlayParams(width, panelHeight(), gravity, true));
-            browserShown = true;
+            gravity = Gravity.TOP | Gravity.START;
+            wm.addView(browser, overlayParams(width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
             return;
         }
 
