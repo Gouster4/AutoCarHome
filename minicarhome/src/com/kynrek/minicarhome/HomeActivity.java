@@ -74,53 +74,49 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Home screen for the JoyeBox: Google Maps runs as a freeform window over the left two-thirds,
- * and a panel on the right third shows a clock, now-playing card and shortcuts.
- *
- * The panel and the app browser are overlay windows: since Android 14, Maps' window carries a
- * full-screen input sink that swallows touches meant for the home screen underneath, and overlays
- * sit above it. Needs (granted over ADB): enable_freeform_support=1, a hidden-API exemption for
- * ActivityOptions.setLaunchWindowingMode, SYSTEM_ALERT_WINDOW, and the notification listener.
+ * Home screen for the JoyeBox: Google Maps runs as a freeform window over the main area,
+ * and a slim bar sits on the left, right, top or bottom. The bar can be compact and 1-column
+ * default for a more Android Auto-like look.
  */
 public class HomeActivity extends Activity {
     private static final String TAG = "BoxHome";
     private static final String MAPS = "com.google.android.apps.maps";
     private static final String WAZE = "com.waze";
     private static final int PICK_NONE = 0, PICK_SHORTCUT = 1, PICK_NAV = 2, PICK_ASSISTANT = 3;
-    // The main window is a multi-window task with launch bounds: unlike a freeform window it has no caption
-    // bar (▭ ✕). Freeform is only used briefly to close a window that has to be reopened at a new size.
+
+    // Main window is a multi-window task with launch bounds.
     private static final int WINDOWING_MODE_FREEFORM = 5, WINDOWING_MODE_MULTI_WINDOW = 6;
-    private static final int FREEFORM_CAPTION_DP = 24;   // measured: 24 px at 160 dpi; scales with display size
-    private final java.util.Map<String, Rect> openedAt = new java.util.HashMap<>();   // pane apps and their window bounds
-    private String reopening;   // app being closed and reopened at a new size; ignore other starts meanwhile
-    private volatile String paneTarget;   // the app most recently opened in the pane (read by window threads)
+    private static final int FREEFORM_CAPTION_DP = 24;
+    private final java.util.Map<String, Rect> openedAt = new java.util.HashMap<>();
+    private String reopening;
+    private volatile String paneTarget;
     private long paneLaunchedAt;
     private static final long PANE_RESCUE_MS = 10000;
     private static final long MAPS_CHECK_MS = 2000;
-    private static final long MAPS_RELAUNCH_MS = 10000;   // give a slow start this long before opening it again
-    private static final long BOOT_ONLINE_WAIT_MS = 90000;   // since boot: open Maps offline after this
-    // Main display apps that need internet when they start (see mapsRetry); others open as soon as they can.
+    private static final long MAPS_RELAUNCH_MS = 10000;
+    private static final long BOOT_ONLINE_WAIT_MS = 90000;
     private static final java.util.Set<String> ONLINE_AT_START = new java.util.HashSet<>(java.util.Arrays.asList(WAZE, MAPS));
-    private static final int MAX_MAPS_ATTEMPTS = 18;   // 3 minutes
+    private static final int MAX_MAPS_ATTEMPTS = 18;
     private int mapsAttempts;
     private long mapsLaunchedAt;
     private boolean mapsPending, mapsInterrupted, topResumed, editing;
-    private int mapsGen;   // counts ensureMaps() rounds
-    private String paneApp;   // app opened in the main pane over the main display app, if any
-    /**
-     * Launcher icons that only bounce to another screen and close themselves; in a freeform window the
-     * bounce never lands, so open the real screen directly. (Podcast Addict: noHistory launcher in its
-     * own task affinity.)
-     */
+    private int mapsGen;
+    private String paneApp;
+
     private static final java.util.Map<String, String> TRAMPOLINES = java.util.Collections.singletonMap(
             "com.bambuna.podcastaddict/com.bambuna.podcastaddict.activity.LauncherActivity",
             "com.bambuna.podcastaddict/com.bambuna.podcastaddict.activity.PodcastListActivity");
-    // Right/left panel: icons per row sets its width, at a fixed width per icon.
-    private static final int MIN_COLUMNS = 2, MAX_COLUMNS = 4, DEFAULT_COLUMNS = 3;
-    private static final int COLUMN_DP = 84;   // a 48-unit icon plus room for its label
+
+    // Default to 1 column, minimum 1, maximum 4.
+    private static final int MIN_COLUMNS = 1, MAX_COLUMNS = 4, DEFAULT_COLUMNS = 1;
+    private static final int COLUMN_DP = 84;
     private static final int PAD_EDGE = 14, PAD_INNER = 6;
     private int columns = DEFAULT_COLUMNS;
-    private boolean panelLeft, settingsOpen;
+
+    // Position values: "left", "right", "top", "bottom"
+    private String panelPos = "bottom";
+    private boolean settingsOpen;
+
     private TextView mapSlot;
     private static final int MAX_RECENT = 10;
     private static final String[] SHORTCUTS = {
@@ -130,14 +126,18 @@ public class HomeActivity extends Activity {
             "com.audible.application",
             "com.audiobookshelf.app",
             "com.android.vending",
-            "com.applepie.setting",    // the box's own Settings
-            "com.android.settings",    // Android Settings
-            "local.boxtools/local.boxtools.WirelessDebugActivity",   // package/class for apps with several icons
-            "org.codeaurora.dialer",   // Phone
-            "com.android.mms",         // Messaging
+            "com.applepie.setting",
+            "com.android.settings",
+            "local.boxtools/local.boxtools.WirelessDebugActivity",
+            "org.codeaurora.dialer",
+            "com.android.mms",
     };
 
-    private static final int BG = 0xFF0E1416, CARD = 0xFF1B2428, TEXT = 0xFFE8EEF0, DIM = 0xFF9AA8AD, ACCENT = 0xFF6FD3C0;
+    private static final int BG = 0xFF000000;
+    private static final int CARD = 0xFF1B2428;
+    private static final int TEXT = 0xFFE8EEF0;
+    private static final int DIM = 0xFF9AA8AD;
+    private static final int ACCENT = 0xFF6FD3C0;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private PackageManager pm;
@@ -150,7 +150,7 @@ public class HomeActivity extends Activity {
     private SignalBars wifiBars, cellBars;
     private TextView weatherTemp, weatherRange;
     private static final long WEATHER_REFRESH_MS = 15 * 60_000;
-    private static final long WEATHER_RETRY_MS = 60_000;   // after a failed fetch (e.g. not online yet after boot)
+    private static final long WEATHER_RETRY_MS = 60_000;
     private static final long SIGNAL_REFRESH_MS = 5000;
     private ImageView mediaArt;
     private LinearLayout progressRow;
@@ -158,8 +158,7 @@ public class HomeActivity extends Activity {
     private TextView mediaRemaining;
     private MediaSessionManager sessions;
     private MediaController controller;
-    // The shown app's track and playback state, kept from its callbacks: each getMetadata() is a call
-    // into the app that copies the album art across, too costly for the progress bar's every second.
+
     private MediaMetadata metadata;
     private PlaybackState playback;
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -167,8 +166,7 @@ public class HomeActivity extends Activity {
         @Override public void onPlaybackStateChanged(PlaybackState s) { playback = s; showMedia(); }
         @Override public void onSessionDestroyed() { pickController(); }
     };
-    // Every active session is watched, so the card switches to whichever app starts playing
-    // even when the set of sessions hasn't changed (a player whose session stays open).
+
     private final List<MediaController> watched = new ArrayList<>();
     private final MediaController.Callback watcher = new MediaController.Callback() {
         @Override public void onPlaybackStateChanged(PlaybackState s) {
@@ -183,10 +181,15 @@ public class HomeActivity extends Activity {
         pm = getPackageManager();
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         prefs = getSharedPreferences("home", MODE_PRIVATE);
+
         columns = Math.max(MIN_COLUMNS, Math.min(MAX_COLUMNS, prefs.getInt("columns", DEFAULT_COLUMNS)));
-        panelLeft = prefs.getBoolean("panel_left", false);
+
+        String savedPos = prefs.getString("panel_pos", "bottom");
+        panelPos = "left".equals(savedPos) || "right".equals(savedPos) || "top".equals(savedPos) || "bottom".equals(savedPos)
+                ? savedPos : "bottom";
+
         setContentView(buildBackdrop());
-        // An app installed, updated (new name or icon) or removed: redraw the shortcuts.
+
         android.content.IntentFilter apps = new android.content.IntentFilter();
         apps.addAction(Intent.ACTION_PACKAGE_ADDED);
         apps.addAction(Intent.ACTION_PACKAGE_REPLACED);
@@ -194,11 +197,12 @@ public class HomeActivity extends Activity {
         apps.addAction(Intent.ACTION_PACKAGE_CHANGED);
         apps.addDataScheme("package");
         registerReceiver(appsChanged, apps);
-        panel = new FrameLayout(this);   // one overlay window for the panel's life; rebuilds swap what's inside
+
+        panel = new FrameLayout(this);
         panel.addView(buildPanel());
         main.postDelayed(this::ensureMaps, 800);
         if (!prefs.contains("density")) setDensity(DEFAULT_DENSITY);
-        syncStatusIcons();   // first run: bigger than the box's 120 dpi
+        syncStatusIcons();
     }
 
     private final android.content.BroadcastReceiver appsChanged = new android.content.BroadcastReceiver() {
@@ -206,7 +210,7 @@ public class HomeActivity extends Activity {
             iconCache.clear();
             labelCache.clear();
             main.removeCallbacks(appsRebuild);
-            main.postDelayed(appsRebuild, 500);   // an update sends removed, added and replaced in a row
+            main.postDelayed(appsRebuild, 500);
         }
     };
     private final Runnable appsRebuild = () -> rebuildPanel();
@@ -221,15 +225,12 @@ public class HomeActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // Testing hook: adb shell am start -n com.kynrek.minicarhome/.HomeActivity --es launch <package/activity>
-        // opens that app the way tapping its icon does.
         String target = intent.getStringExtra("launch");
         ComponentName cn = target == null ? null : ComponentName.unflattenFromString(target);
         if (cn != null) {
             main.postDelayed(() -> launch(cn), 300);
             return;
         }
-        // Home pressed (or the Home gesture): close the app browser and bring the Maps window back.
         hideBrowser();
         main.postDelayed(this::ensureMaps, 250);
     }
@@ -262,8 +263,6 @@ public class HomeActivity extends Activity {
     protected void onStop() {
         super.onStop();
         started = false;
-        // Another app is now full screen: stop reopening Maps over it and take the overlays down. If Maps
-        // hadn't come up yet (something covered the home screen during boot), carry on when we're back.
         mapsInterrupted = mapsPending;
         mapsPending = false;
         main.removeCallbacks(mapsRetry);
@@ -280,12 +279,6 @@ public class HomeActivity extends Activity {
         rescuePaneApp();
     }
 
-    /**
-     * An app just opened in the pane covered the home screen: its splash screen started the main screen in a
-     * new task (Aladdin Connect does this), and a new task opens full screen. Remember the app. With window
-     * control (Box Tools), close that task and open the app again the hand-off way; without it, the app stays
-     * full screen.
-     */
     private void rescuePaneApp() {
         if (paneTarget == null || SystemClock.uptimeMillis() - paneLaunchedAt > PANE_RESCUE_MS) return;
         paneLaunchedAt = 0;
@@ -303,45 +296,31 @@ public class HomeActivity extends Activity {
         });
     }
 
-    /**
-     * Apps whose splash screen opens the main screen in a new task: started freeform, that task inherits
-     * freeform but not the pane's bounds, so it's resized into the pane once it appears (it keeps the
-     * ▭ ✕ caption bar). Without window control they open full screen, which at least shows all of them.
-     */
     private void startHandoffApp(Intent i, String pkg) {
         if (!windowsReady()) {
-            paneLaunchedAt = 0;   // full screen on purpose
+            paneLaunchedAt = 0;
             try { startActivity(i); } catch (RuntimeException e) { Log.w(TAG, "launch failed", e); }
             return;
         }
         startPane(i, WINDOWING_MODE_FREEFORM);
         Rect bounds = captionedBounds();
-        for (long delay : new long[]{1500, 3000, 5000}) {   // the main screen's task appears after the splash
+        for (long delay : new long[]{1500, 3000, 5000}) {
             main.postDelayed(() -> { if (pkg.equals(paneTarget)) fitTask(pkg, bounds); }, delay);
         }
     }
 
-    /** The pane for a freeform window: its caption bar pushes the app down by the bar's height. */
     private Rect captionedBounds() {
         Rect r = mapsBounds();
         r.bottom -= sysDp(FREEFORM_CAPTION_DP);
         return r;
     }
 
-    // ---- Window control (through Box Tools) ----
-    // Android only lets the shell user see and arrange other apps' windows. Box Tools (same signing key, 1.9 or
-    // later) runs those commands as the shell user through the box's own adbd, for apps holding its CONTROL
-    // permission. Its calls block for a moment (up to about a second to switch a window's mode), so they run off
-    // the main thread: on windowOps, one at a time, or on the letterbox check's own thread.
-
     private static final Uri BOX_SHELL = Uri.parse("content://local.boxtools.shell");
     private final java.util.concurrent.ExecutorService windowOps =
             java.util.concurrent.Executors.newSingleThreadExecutor(r -> new Thread(r, "window-ops"));
-    // One task line of "am stack list"; topActivity is missing for tasks with no activity.
     private static final java.util.regex.Pattern TASK_LINE = java.util.regex.Pattern.compile(
             "taskId=(\\d+): (\\S+) bounds=\\S+ userId=\\d+ visible=(true|false)(?: topActivity=ComponentInfo\\{([^}]+)\\})?");
 
-    /** A task as "am stack list" shows it. */
     private static final class TaskRef {
         final int id;
         final ComponentName top;
@@ -354,12 +333,10 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** Whether Box Tools can arrange windows for us. Quick enough for the main thread. */
     private boolean windowsReady() {
         return pm.resolveContentProvider("local.boxtools.shell", 0) != null;
     }
 
-    /** Call Box Tools' shell provider. Null if it's missing or the call failed. Not on the main thread. */
     private Bundle boxCall(String method, String arg, Bundle extras) {
         try {
             Bundle b = getContentResolver().call(BOX_SHELL, method, arg, extras);
@@ -374,19 +351,16 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** Run a command as the shell user through Box Tools and return its output ("" on failure). */
     private String shell(String command) {
         Bundle b = boxCall("exec", command, null);
         String out = b == null ? null : b.getString("out");
         return out == null ? "" : out;
     }
 
-    /** The app's frontmost task, or null. */
     private TaskRef findTask(String pkg) {
         return findTask(shell("am stack list"), pkg);
     }
 
-    /** Whether the app has a task showing; null if Box Tools couldn't tell. */
     private Boolean taskVisible(String pkg) {
         String list = shell("am stack list");
         if (list.isEmpty()) return null;
@@ -394,7 +368,6 @@ public class HomeActivity extends Activity {
         return t != null && t.visible;
     }
 
-    /** The app's frontmost task in "am stack list" output (it goes front to back), or null. */
     private static TaskRef findTask(String list, String pkg) {
         java.util.regex.Matcher m = TASK_LINE.matcher(list);
         while (m.find()) {
@@ -407,10 +380,6 @@ public class HomeActivity extends Activity {
         return null;
     }
 
-    /**
-     * Multi-window would letterbox the task's top screen: it's locked to portrait in its manifest, or marked as
-     * not resizable (such screens usually lock orientation from code, like TeamViewer's EULA).
-     */
     private boolean portraitOnly(TaskRef task) {
         String dump = shell("dumpsys activity activities");
         int at = dump.indexOf(" #" + task.id + " ");
@@ -430,13 +399,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /**
-     * Put the app's task in the pane at its full size: caption-less multi-window like any other app. Screens
-     * locked to portrait get letterboxed into a narrow column there, so those get a freeform window instead,
-     * which ignores the lock (and keeps a ▭ ✕ caption bar; Android keeps freeform windows below the status
-     * bar). The lock is often set from code, so after switching, MiniCarHome checks whether Android letterboxed
-     * the app and moves it to freeform if so. Call on the main thread; the work happens on windowOps.
-     */
     private void fitTask(String pkg, Rect captioned) {
         Rect pane = mapsBounds();
         windowOps.execute(() -> {
@@ -449,8 +411,6 @@ public class HomeActivity extends Activity {
             }
             setTaskMode(task, WINDOWING_MODE_MULTI_WINDOW, pane);
             new Thread(() -> {
-                // Letterboxed twice in a row: a portrait splash screen (Audible's) is letterboxed only briefly,
-                // and a sign-in screen can take over a few seconds later (Netflix's).
                 boolean before = false;
                 for (long wait : new long[]{1200, 1500, 1500, 2000, 2000}) {
                     SystemClock.sleep(wait);
@@ -468,7 +428,6 @@ public class HomeActivity extends Activity {
         });
     }
 
-    /** Set a task's window mode and bounds (Box Tools' TaskWindow, as the shell user). */
     private boolean setTaskMode(TaskRef task, int mode, Rect bounds) {
         Bundle extras = new Bundle();
         extras.putInt("taskId", task.id);
@@ -477,7 +436,6 @@ public class HomeActivity extends Activity {
         return boxOk("windowMode", extras);
     }
 
-    /** Close a task and its screens. */
     private boolean removeTask(TaskRef task) {
         Bundle extras = new Bundle();
         extras.putInt("taskId", task.id);
@@ -492,16 +450,11 @@ public class HomeActivity extends Activity {
         return false;
     }
 
-    /**
-     * Whether the app's top screen is letterboxed, from "dumpsys activity activities".
-     * Not "-p pkg": that also has the app's own process dump itself while Android holds its window lock, so an
-     * app opening a dialog or resizing at that moment freezes both until a 2 s timeout, five checks in a row.
-     */
     private boolean letterboxed(String pkg) {
         String out = shell("dumpsys activity activities");
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("\\* Hist +#\\d+: ActivityRecord\\{\\S+ u0 " + java.util.regex.Pattern.quote(pkg) + "/").matcher(out);
-        int at = m.find() ? m.start() + 1 : -1;   // its task's top activity comes first
+        int at = m.find() ? m.start() + 1 : -1;
         if (at < 0) return false;
         int next = out.indexOf("* Hist", at);
         String block = out.substring(at, next < 0 ? out.length() : next);
@@ -512,31 +465,29 @@ public class HomeActivity extends Activity {
         return prefs.getStringSet("handoff_apps", java.util.Collections.emptySet());
     }
 
-    // ---- Maps window ----
-
     private Rect mapsBounds() {
         Rect screen = wm.getMaximumWindowMetrics().getBounds();
+
+        if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
+            int barH = panelHeight();
+            int top = "top".equals(panelPos) ? barH : 0;
+            int bottom = "bottom".equals(panelPos) ? screen.height() - barH : screen.height();
+            return new Rect(0, top, screen.width(), bottom);
+        }
+
         int mapsWidth = screen.width() - panelWidth();
-        int left = panelLeft ? screen.width() - mapsWidth : 0;
+        int left = "left".equals(panelPos) ? screen.width() - mapsWidth : 0;
         return new Rect(left, 0, left + mapsWidth, screen.height());
     }
 
-    /** After a width or side change, move Maps to its new place (startInPane reopens it at the new size). */
     private void resizeMaps(Rect old) { ensureMaps(); }
+    private void resizeMaps(Rect old, String oldApp) { ensureMaps(); }
 
-    private void resizeMaps(Rect old, String oldApp) { ensureMaps(); }   // the old app's window stays underneath
-
-    /**
-     * Open the Maps window and keep retrying until it actually comes up: right after boot Maps can be
-     * unavailable or the start can be dropped, which left an empty slot until it was tapped.
-     * With window control (Box Tools), success is Maps' task showing; without it, this activity losing
-     * top-resumed status, which anything else opening over the home screen also causes.
-     */
     private void ensureMaps() {
         mapsAttempts = 0;
         mapsPending = true;
-        mapsGen++;   // a check still running for an earlier round is ignored
-        paneTarget = navApp();   // opening another app in the pane changes this and ends the retries
+        mapsGen++;
+        paneTarget = navApp();
         main.removeCallbacks(mapsRetry);
         main.post(mapsRetry);
     }
@@ -545,14 +496,10 @@ public class HomeActivity extends Activity {
         @Override public void run() {
             if (!mapsPending) return;
             if (paneTarget != null && !paneTarget.equals(navApp())) {
-                mapsPending = false;   // another app was opened in the pane meanwhile
+                mapsPending = false;
                 return;
             }
-            // Right after boot: this screen starts before Android unlocks the user's storage (about 12 s after it
-            // shows), and Wi-Fi and mobile data connect only after that. Waze opened before the unlock crashes
-            // ("credential encrypted storage isn't accessible"); opened before there's internet, it stays on
-            // offline maps with no GPS until restarted. Offline map apps (OsmAnd) don't wait for internet: in the
-            // car with no data connection that wait ran the full BOOT_ONLINE_WAIT_MS.
+
             boolean booting = SystemClock.elapsedRealtime() < BOOT_ONLINE_WAIT_MS;
             if (!getSystemService(android.os.UserManager.class).isUserUnlocked()
                     || (mapsAttempts == 0 && booting && ONLINE_AT_START.contains(navApp()) && !online())) {
@@ -560,11 +507,10 @@ public class HomeActivity extends Activity {
                 return;
             }
             if (!windowsReady()) {
-                // Before the first try there's nothing to see; after it, something above us is most likely Maps.
                 mapsStep(mapsAttempts > 0 && !topResumed);
                 return;
             }
-            // Ask Box Tools whether Maps' task is showing, off the main thread.
+
             int gen = mapsGen;
             String app = navApp();
             windowOps.execute(() -> {
@@ -576,10 +522,9 @@ public class HomeActivity extends Activity {
         }
     };
 
-    /** The rest of a Maps retry, once it's known whether the Maps window is up. */
     private void mapsStep(boolean up) {
         if (paneTarget != null && !paneTarget.equals(navApp())) {
-            mapsPending = false;   // another app was opened in the pane while Box Tools was asked
+            mapsPending = false;
             return;
         }
         if (up) {
@@ -588,7 +533,7 @@ public class HomeActivity extends Activity {
             return;
         }
         if (mapsAttempts > 0 && SystemClock.uptimeMillis() - mapsLaunchedAt < MAPS_RELAUNCH_MS) {
-            main.postDelayed(mapsRetry, MAPS_CHECK_MS);   // still starting
+            main.postDelayed(mapsRetry, MAPS_CHECK_MS);
             return;
         }
         if (++mapsAttempts > MAX_MAPS_ATTEMPTS) {
@@ -606,22 +551,19 @@ public class HomeActivity extends Activity {
     @Override
     public void onTopResumedActivityChanged(boolean top) {
         super.onTopResumedActivityChanged(top);
-        topResumed = top;   // the next Maps retry checks whether Maps is up
+        topResumed = top;
     }
 
-    /** Whether the default network has working internet. */
     private boolean online() {
         android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
         android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
         return nc != null && nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
     }
 
-    /** Back to the home screen: close the app in the main window (if any) and show the main display app. */
     private void goHome() {
         hideBrowser();
         settingsOpen = false;
-        editing = false;
-        paneApp = null;   // its window stays underneath the main display app
+        paneApp = null;
         rebuildPanel();
         launchMaps();
     }
@@ -636,17 +578,8 @@ public class HomeActivity extends Activity {
         startInPane(i, navApp());
     }
 
-    /**
-     * Start an app in the main pane, as a caption-less multi-window task. The window shell only shows tasks
-     * it manages, and a new multi-window task for an app that's already running (a music app playing in the
-     * background, say) can stay hidden. Freeform tasks are always shown, so every start goes to freeform first
-     * and switches the same task to multi-window a moment later; the caption bar shows only briefly.
-     *
-     * Android also keeps an open window's size, so if this app's window was opened at another size (the
-     * panel's width or side changed since), Box Tools taps its freeform close button and it's reopened.
-     */
     private void startInPane(Intent i, String pkg) {
-        if (pkg.equals(reopening)) return;   // e.g. the Maps retry firing mid-close
+        if (pkg.equals(reopening)) return;
         paneTarget = pkg;
         paneLaunchedAt = SystemClock.uptimeMillis();
         if (handoffApps().contains(pkg)) { startHandoffApp(i, pkg); return; }
@@ -658,26 +591,23 @@ public class HomeActivity extends Activity {
         }
         Log.i(TAG, "reopening " + pkg + " at " + want + " (was " + had + ")");
         reopening = pkg;
-        hidePanel();   // the old window's close button can sit where the panel is now
+        hidePanel();
         main.postDelayed(() -> sendBroadcast(new Intent("local.boxtools.action.CLOSE_WINDOW")
-                .setPackage("local.boxtools").putExtra("package", pkg)), 600);   // Box Tools checks our CONTROL permission
+                .setPackage("local.boxtools").putExtra("package", pkg)), 600);
         main.postDelayed(() -> {
             showPanel();
             reopening = null;
-            if (!pkg.equals(paneTarget)) return;   // another app was opened meanwhile
+            if (!pkg.equals(paneTarget)) return;
             startPane(i, WINDOWING_MODE_FREEFORM);
             dropCaption(i, pkg, want);
         }, 3000);
     }
 
-    /** Switch the app's freeform task to multi-window, unless another app was opened in the meantime. */
     private void dropCaption(Intent i, String pkg, Rect bounds) {
         openedAt.put(pkg, bounds);
         main.postDelayed(() -> {
             if (pkg.equals(paneTarget) && !pkg.equals(reopening)) startPane(i, WINDOWING_MODE_MULTI_WINDOW);
         }, 1000);
-        // Some apps open their real screen in another task a moment later (Files, TeamViewer), which misses the
-        // pane. With window control, snap whatever task the app ended up in into the pane.
         main.postDelayed(() -> {
             if (pkg.equals(paneTarget) && !pkg.equals(reopening) && windowsReady()) fitTask(pkg, captionedBounds());
         }, 2500);
@@ -692,7 +622,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** Launch options that put an app in a window over the main pane. */
     private Bundle paneOptions(int mode) {
         ActivityOptions o = ActivityOptions.makeBasic();
         o.setLaunchBounds(mapsBounds());
@@ -705,27 +634,22 @@ public class HomeActivity extends Activity {
         return o.toBundle();
     }
 
-    /**
-     * With "Open apps in main window" on, apps open in the main pane over the main display app, which keeps
-     * running underneath (Home brings it back). Opening another app puts it over the previous one.
-     * Box Tools' own icons (Stock Home, Wireless Debug) still open normally.
-     */
     private boolean opensInPane(ComponentName cn) {
         return prefs.getBoolean("apps_in_pane", true) && !"local.boxtools".equals(cn.getPackageName());
     }
 
     private void launchInPane(Intent i, String pkg) {
-        paneApp = pkg;   // the previous app's window stays underneath
+        paneApp = pkg;
         main.postDelayed(() -> startInPane(i, pkg), 400);
     }
 
-    // ---- overlays ----
-
-    private WindowManager.LayoutParams overlayParams(int width, int gravity, boolean focusable) {
+    private WindowManager.LayoutParams overlayParams(int width, int height, int gravity, boolean focusable) {
         int flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
         if (!focusable) flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(width, WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, flags, PixelFormat.OPAQUE);
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                width, height,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                flags, PixelFormat.OPAQUE);
         lp.gravity = gravity;
         lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
         return lp;
@@ -742,16 +666,27 @@ public class HomeActivity extends Activity {
     }
 
     private WindowManager.LayoutParams panelParams() {
-        return overlayParams(panelWidth(), Gravity.TOP | (panelLeft ? Gravity.START : Gravity.END), false);
+        if ("left".equals(panelPos) || "right".equals(panelPos)) {
+            int g = "left".equals(panelPos) ? Gravity.TOP | Gravity.START : Gravity.TOP | Gravity.END;
+            return overlayParams(panelWidth(), WindowManager.LayoutParams.MATCH_PARENT, g, false);
+        }
+        int g = "top".equals(panelPos) ? Gravity.TOP | Gravity.START : Gravity.BOTTOM | Gravity.START;
+        return overlayParams(WindowManager.LayoutParams.MATCH_PARENT, panelHeight(), g, false);
     }
 
-    /** Panel width for the chosen icons per row, never more than 60% of the screen. */
     private int panelWidth() {
         int max = wm.getMaximumWindowMetrics().getBounds().width() * 3 / 5;
         return Math.min(max, dp(PAD_EDGE) + dp(PAD_INNER) + columns * dp(COLUMN_DP));
     }
 
-    // Settings live in SharedPreferences, which are written to disk and survive reboots.
+    private int panelHeight() {
+        // Small compact bar for top/bottom placement.
+        int h = dp(56);
+        if (columns >= 3) h = dp(64);
+        if (columns >= 4) h = dp(72);
+        return h;
+    }
+
     private void setColumns(int n) {
         n = Math.max(MIN_COLUMNS, Math.min(MAX_COLUMNS, n));
         if (n == columns) return;
@@ -761,7 +696,15 @@ public class HomeActivity extends Activity {
         applyLayout(old);
     }
 
-    /** The main display app shown in the big window; Google Maps by default. */
+    private void setPanelPos(String pos) {
+        if (pos == null) pos = "bottom";
+        if (pos.equals(panelPos)) return;
+        Rect old = mapsBounds();
+        panelPos = pos;
+        prefs.edit().putString("panel_pos", pos).apply();
+        applyLayout(old);
+    }
+
     private String navApp() {
         String app = prefs.getString("nav_app", MAPS);
         return pm.getLaunchIntentForPackage(app) != null ? app : MAPS;
@@ -775,19 +718,14 @@ public class HomeActivity extends Activity {
         mapSlot.setText(appName(pkg) + "\nTap to open");
         rebuildPanel();
         updateMapSlot();
-        resizeMaps(old, oldApp);   // closes the old app's window, then opens the new one in its place
+        resizeMaps(old, oldApp);
     }
 
-    /**
-     * What the mic button does: "builtin" (default) listens on the panel and sends the destination straight to
-     * the main display app; "system" opens Android's assistant; "app" opens the chosen assistant app.
-     */
     private String assistantMode() {
         String mode = prefs.getString("assistant_mode", "builtin");
         return "app".equals(mode) && assistantApp() == null ? "builtin" : mode;
     }
 
-    /** The chosen assistant app, if it's still installed. */
     private String assistantApp() {
         String app = prefs.getString("assistant_app", null);
         return app != null && pm.getLaunchIntentForPackage(app) != null ? app : null;
@@ -811,7 +749,6 @@ public class HomeActivity extends Activity {
 
     private static final List<String> STATUS_SIGNAL_ICONS = java.util.Arrays.asList("wifi", "mobile");
 
-    /** Android's Wi-Fi and cell icons are hidden while the panel shows its bigger ones at the top. */
     private void syncStatusIcons() {
         boolean hide = "top".equals(signalPlace());
         try {
@@ -825,22 +762,12 @@ public class HomeActivity extends Activity {
         }
     }
 
-    private void setPanelLeft(boolean left) {
-        if (left == panelLeft) return;
-        Rect old = mapsBounds();
-        panelLeft = left;
-        prefs.edit().putBoolean("panel_left", left).apply();
-        applyLayout(old);
-    }
-
     private void applyLayout(Rect oldMaps) {
         rebuildPanel();
         updateMapSlot();
         pickController();
         resizeMaps(oldMaps);
     }
-
-    // ---- editable shortcuts (saved as package or package/class names) ----
 
     private List<String> shortcuts() {
         List<String> out = new ArrayList<>();
@@ -890,22 +817,25 @@ public class HomeActivity extends Activity {
     }
 
     private void showBrowser() { openBrowser(PICK_NONE); }
-
-    /** The app browser in "pick" mode: tapping an app adds it to the shortcuts instead of opening it. */
     private void showPicker() { openBrowser(PICK_SHORTCUT); }
-
-    /** Pick the main display app: any app can run in the big window (Google Maps, Waze, ...). */
     private void showNavPicker() { openBrowser(PICK_NAV); }
-
-    /** Pick the app the assistant button opens (Google Assistant, Gemini, Home Assistant, ...). */
     private void showAssistantPicker() { openBrowser(PICK_ASSISTANT); }
 
     private void openBrowser(int pick) {
         if (browserShown || !Settings.canDrawOverlays(this)) return;
         browser = new BrowserView(this, pick);
-        // In the main pane, beside the panel, like an app opened there.
+
         int width = wm.getMaximumWindowMetrics().getBounds().width() - panelWidth();
-        wm.addView(browser, overlayParams(width, Gravity.TOP | (panelLeft ? Gravity.END : Gravity.START), true));
+        int gravity = "left".equals(panelPos) ? Gravity.TOP | Gravity.END : Gravity.TOP | Gravity.START;
+        if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
+            width = wm.getMaximumWindowMetrics().getBounds().width();
+            gravity = "top".equals(panelPos) ? Gravity.TOP | Gravity.START : Gravity.BOTTOM | Gravity.START;
+            wm.addView(browser, overlayParams(width, panelHeight(), gravity, true));
+            browserShown = true;
+            return;
+        }
+
+        wm.addView(browser, overlayParams(width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
         browserShown = true;
     }
 
@@ -917,17 +847,16 @@ public class HomeActivity extends Activity {
         browser = null;
     }
 
-    // ---- layouts ----
-
-    /** The activity itself: a slot under the Maps window (tap to reopen Maps) and empty space under the panel. */
     private View buildBackdrop() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.HORIZONTAL);
         root.setBackgroundColor(BG);
+
         mapSlot = text(appName(navApp()) + "\nTap to open", 18, DIM);
         mapSlot.setGravity(Gravity.CENTER);
         mapSlot.setBackground(rounded(CARD, 16));
         mapSlot.setOnClickListener(v -> launchMaps());
+
         root.addView(mapSlot);
         main.post(this::updateMapSlot);
         return root;
@@ -935,35 +864,114 @@ public class HomeActivity extends Activity {
 
     private void updateMapSlot() {
         if (mapSlot == null) return;
+        if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            lp.setMargins(dp(8), dp(8), dp(8), dp(8));
+            mapSlot.setLayoutParams(lp);
+            return;
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 wm.getMaximumWindowMetrics().getBounds().width() - panelWidth() - dp(12), ViewGroup.LayoutParams.MATCH_PARENT);
         lp.setMargins(dp(8), dp(8), dp(4), dp(8));
         mapSlot.setLayoutParams(lp);
-        ((LinearLayout) mapSlot.getParent()).setGravity(panelLeft ? Gravity.END : Gravity.START);
+        ((LinearLayout) mapSlot.getParent()).setGravity("left".equals(panelPos) ? Gravity.END : Gravity.START);
     }
 
     private View buildPanel() {
+        if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
+            return buildCompactBar();
+        }
+        return buildSidePanel();
+    }
+
+    private View buildCompactBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackground(new ColorDrawable(BG));
+        bar.setPadding(dp(8), dp(4), dp(8), dp(4));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+
+        // main compact shortcuts
+        ScrollView scroller = new ScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setVerticalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        // app tile list compact
+        List<View> tiles = new ArrayList<>();
+        View home = appTile(navApp());
+        home.setOnClickListener(v -> goHome());
+        tiles.add(home);
+
+        List<String> list = shortcuts();
+        for (String entry : list) {
+            if (navApp().equals(entry.split("/")[0])) continue;
+            View t = null;
+            if (isWazeEntry(entry)) t = wazeTile(entry);
+            else if (entry.contains("/")) t = activityTile(ComponentName.unflattenFromString(entry));
+            else if (pm.getLaunchIntentForPackage(entry) != null) t = appTile(entry);
+            if (t != null) tiles.add(editing ? editable(t, tiles.size() - 1, list.size()) : t);
+        }
+
+        if (editing) {
+            tiles.add(iconTile("+", "Add", v -> showPicker()));
+            tiles.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
+        } else {
+            tiles.add(iconTile("☷", "All apps", v -> showBrowser()));
+            tiles.add(optionsTile());
+        }
+
+        for (View tile : tiles) {
+            row.addView(tile, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        scroller.addView(row);
+        bar.addView(scroller, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        // right side compact controls
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+
+        if (prefs.getBoolean("show_mic", false)) {
+            actions.addView(assistantButton(), new LinearLayout.LayoutParams(dp(34), dp(34)));
+        }
+
+        String place = signalPlace();
+        if ("bottom".equals(place) || "top".equals(place)) {
+            View sig = signalsRowCompact();
+            actions.addView(sig, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        bar.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        return bar;
+    }
+
+    private View buildSidePanel() {
         int n = columns;
-        wifiBars = cellBars = null;   // recreated below only if the indicators are shown
+        wifiBars = cellBars = null;
         LinearLayout p = new LinearLayout(this);
         p.setOrientation(LinearLayout.VERTICAL);
         p.setBackground(panelBackground());
-        // Extra padding on the screen-edge side keeps buttons clear of the edge Back-gesture strip.
-        p.setPadding(dp(panelLeft ? PAD_EDGE : PAD_INNER), dp(4), dp(panelLeft ? PAD_INNER : PAD_EDGE), dp(4));
+        p.setPadding(dp("left".equals(panelPos) ? PAD_EDGE : PAD_INNER), dp(4), dp("left".equals(panelPos) ? PAD_INNER : PAD_EDGE), dp(4));
 
-        // Clock and date shrink and shorten as the panel narrows; weather sits beside them when there's room.
         boolean showClock = prefs.getBoolean("show_clock", true);
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
+
         LinearLayout clockBox = new LinearLayout(this);
-        // Wide panels: date beside the clock on one line, leaving the height for media and shortcuts.
         clockBox.setOrientation(n >= 3 ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         clockBox.setBaselineAligned(true);
-        // 12-hour with AM/PM unless 24-hour time is turned on in settings (independent of Android's setting).
+
         boolean h24 = prefs.getBoolean("clock_24h", false);
         LinearLayout time = new LinearLayout(this);
         time.setOrientation(LinearLayout.HORIZONTAL);
         time.setBaselineAligned(true);
+
         TextClock clock = new TextClock(this);
         clock.setFormat12Hour(h24 ? "H:mm" : "h:mm");
         clock.setFormat24Hour(h24 ? "H:mm" : "h:mm");
@@ -971,7 +979,8 @@ public class HomeActivity extends Activity {
         clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         clock.setSingleLine(true);
         time.addView(clock);
-        time.setBaselineAlignedChildIndex(0);   // the date lines up with the clock digits
+        time.setBaselineAlignedChildIndex(0);
+
         if (!h24) {
             TextClock ampm = new TextClock(this);
             ampm.setFormat12Hour("a");
@@ -981,26 +990,28 @@ public class HomeActivity extends Activity {
             ampm.setPadding(dp(4), 0, 0, 0);
             time.addView(ampm);
         }
+
         TextClock date = new TextClock(this);
         String dateFormat = n >= 4 ? "EEE, MMM d" : "MMM d";
         date.setFormat12Hour(dateFormat);
         date.setFormat24Hour(dateFormat);
-        style(date, n >= 3 ? 13 : 12, 0xFFDCE4E7);   // near-white: DIM is hard to read over a wallpaper
+        style(date, n >= 3 ? 13 : 12, 0xFFDCE4E7);
         date.setSingleLine(true);
         if (n >= 3) date.setPadding(dp(6), 0, 0, 0);
         clockBox.addView(time);
         clockBox.addView(date);
+
         if (!showClock) clockBox.setVisibility(View.GONE);
         header.addView(clockBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
         weatherTemp = null;
         weatherRange = null;
         boolean statusIcons = "top".equals(signalPlace());
-        if (n >= 3) {   // weather needs at least three icons' width beside the clock
+        if (n >= 3) {
             LinearLayout wx = new LinearLayout(this);
             wx.setOrientation(LinearLayout.HORIZONTAL);
             wx.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-            // Below the status bar's icons, or below the panel's own when they replace them.
-            wx.setPadding(dp(2), statusIcons ? dp(STATUS_ROW_DP) : statusBarHeight(), 0, 0);   // tight: "10:30 PM Oct 31" needs the room
+            wx.setPadding(dp(2), statusIcons ? dp(STATUS_ROW_DP) : statusBarHeight(), 0, 0);
             weatherTemp = text("", 20, TEXT);
             weatherTemp.setSingleLine(true);
             wx.addView(weatherTemp);
@@ -1012,8 +1023,8 @@ public class HomeActivity extends Activity {
             }
             header.addView(wx);
         }
+
         if (statusIcons) {
-            // Over the header's top-right corner, so they don't take width from the clock and date.
             FrameLayout top = new FrameLayout(this);
             top.addView(header);
             top.addView(statusSignals(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1022,25 +1033,26 @@ public class HomeActivity extends Activity {
         } else if (showClock || weatherTemp != null) {
             p.addView(header);
         }
-        if (prefs.getBoolean("show_media", true) && !settingsOpen) {   // settings get the room while open
+
+        if (prefs.getBoolean("show_media", true) && !settingsOpen) {
             p.addView(buildMediaCard(n), marginTop(LinearLayout.LayoutParams.MATCH_PARENT, 4));
         } else {
-            mediaTitle = new TextView(this);     // keep the now-playing code working with nothing shown
+            mediaTitle = new TextView(this);
             mediaArtist = new TextView(this);
             mediaArt = new ImageView(this);
             playButton = new TextView(this);
             progressRow = null;
         }
 
-        // Shortcuts (or the settings) scroll when they no longer fit, e.g. one icon per row.
         ScrollView scroller = new ScrollView(this);
         scroller.setVerticalScrollBarEnabled(false);
         scroller.addView(settingsOpen ? buildSettings(n) : buildShortcuts(n));
         p.addView(scroller, weighted(4));
-        // The bottom bar holds only the voice button and bottom signal bars; settings open from the Options tile.
+
         if (prefs.getBoolean("show_mic", false) || "bottom".equals(signalPlace())) {
             p.addView(buildBottomBar(n), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
+
         return p;
     }
 
@@ -1053,9 +1065,6 @@ public class HomeActivity extends Activity {
         return top;
     }
 
-    // ---- Display size ----
-    // Android's display density, which sizes every other app (Maps, the music player...). The panel itself
-    // keeps the same size at any density (see UI_SCALE). Needs WRITE_SECURE_SETTINGS, granted over ADB.
     private static final int DEFAULT_DENSITY = 160;
     private static final int[] DENSITIES = {120, 140, 160, 180, 200};
 
@@ -1063,7 +1072,7 @@ public class HomeActivity extends Activity {
         try {
             Object wms = Class.forName("android.view.WindowManagerGlobal").getMethod("getWindowManagerService").invoke(null);
             wms.getClass().getMethod("setForcedDisplayDensityForUser", int.class, int.class, int.class)
-                    .invoke(wms, 0 /* default display */, dpi, 0 /* the box has one user */);
+                    .invoke(wms, 0, dpi, 0);
             prefs.edit().putInt("density", dpi).apply();
         } catch (Exception e) {
             Log.w("MiniCarHome", "setDensity failed", e);
@@ -1072,12 +1081,9 @@ public class HomeActivity extends Activity {
         }
     }
 
-    // ---- Wallpaper behind the panel ----
-    // The picture lives in the app's external files folder so it can also be pushed over ADB:
-    //   adb push picture.jpg /sdcard/Android/data/com.kynrek.minicarhome/files/wallpaper.jpg
     private static final int PICK_WALLPAPER = 41;
-    private static final int WALLPAPER_SCRIM = 0x660E1416;   // darkens the picture a little so text stays readable
-    private Bitmap wallpaperCache;   // already cropped and scaled to the panel; rebuilds reuse it
+    private static final int WALLPAPER_SCRIM = 0x660E1416;
+    private Bitmap wallpaperCache;
     private String wallpaperKey;
 
     private File wallpaperFile() {
@@ -1092,7 +1098,6 @@ public class HomeActivity extends Activity {
         if (wallpaperCache == null || !key.equals(wallpaperKey)) {
             Bitmap full = BitmapFactory.decodeFile(f.getPath());
             if (full == null) return new ColorDrawable(BG);
-            // Crop the middle of the picture to the panel's shape, so it fills without stretching.
             int bw = full.getWidth(), bh = full.getHeight();
             int cw = bw, ch = bw * h / w;
             if (ch > bh) { ch = bh; cw = bh * w / h; }
@@ -1106,7 +1111,7 @@ public class HomeActivity extends Activity {
 
     private void pickWallpaper() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
-        hidePanel();   // the panel floats above every app, so get it out of the picker's way
+        hidePanel();
         try {
             startActivityForResult(i, PICK_WALLPAPER);
         } catch (Exception e) {
@@ -1121,7 +1126,6 @@ public class HomeActivity extends Activity {
         if (request != PICK_WALLPAPER) return;
         if (result == RESULT_OK && data != null && data.getData() != null) {
             try {
-                // Scale big photos down while copying; the panel is only a few hundred pixels wide.
                 BitmapFactory.Options o = new BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
                 try (InputStream in = getContentResolver().openInputStream(data.getData())) { BitmapFactory.decodeStream(in, null, o); }
@@ -1148,15 +1152,13 @@ public class HomeActivity extends Activity {
     private void rebuildPanel() {
         panel.removeAllViews();
         panel.addView(buildPanel());
-        if (panelShown) wm.updateViewLayout(panel, panelParams());   // the width or side may have changed
+        if (panelShown) wm.updateViewLayout(panel, panelParams());
         showMedia();
         main.removeCallbacks(signalTick);
         if (panelShown) main.post(signalTick);
         else updateSignals();
         showWeather();
     }
-
-    // ---- weather ----
 
     private final Runnable weatherTick = new Runnable() {
         @Override public void run() {
@@ -1171,7 +1173,7 @@ public class HomeActivity extends Activity {
                     } else {
                         Log.i(TAG, "weather fetch failed; trying again in a minute");
                         main.post(() -> {
-                            if (!started) return;   // onStart starts the ticks again
+                            if (!started) return;
                             main.removeCallbacks(weatherTick);
                             main.postDelayed(weatherTick, WEATHER_RETRY_MS);
                         });
@@ -1212,6 +1214,7 @@ public class HomeActivity extends Activity {
         top.addView(choice("Done", true, v -> { settingsOpen = false; rebuildPanel(); }));
         s.addView(top);
         s.addView(text(n >= 2 ? "Icons per row" : "Icons", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 10));
+
         LinearLayout stepper = new LinearLayout(this);
         stepper.setOrientation(LinearLayout.HORIZONTAL);
         stepper.setGravity(Gravity.CENTER_VERTICAL);
@@ -1227,12 +1230,16 @@ public class HomeActivity extends Activity {
         stepper.addView(value, new LinearLayout.LayoutParams(dp(30), ViewGroup.LayoutParams.WRAP_CONTENT));
         stepper.addView(plus);
         s.addView(stepper, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
-        s.addView(text("Side", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
-        LinearLayout sides = new LinearLayout(this);
-        sides.setOrientation(LinearLayout.HORIZONTAL);
-        sides.addView(choice("Left", panelLeft, v -> setPanelLeft(true)));
-        sides.addView(choice("Right", !panelLeft, v -> setPanelLeft(false)));
-        s.addView(sides, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
+        s.addView(text("Bar position", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
+        LinearLayout positions = new LinearLayout(this);
+        positions.setOrientation(LinearLayout.HORIZONTAL);
+        positions.addView(choice("Left", "left".equals(panelPos), v -> setPanelPos("left")));
+        positions.addView(choice("Right", "right".equals(panelPos), v -> setPanelPos("right")));
+        positions.addView(choice("Top", "top".equals(panelPos), v -> setPanelPos("top")));
+        positions.addView(choice("Bottom", "bottom".equals(panelPos), v -> setPanelPos("bottom")));
+        s.addView(positions, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
         s.addView(text(n >= 3 ? "Display size (other apps)" : "Display size", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         HorizontalScrollView dsScroll = new HorizontalScrollView(this);
         dsScroll.setHorizontalScrollBarEnabled(false);
@@ -1242,12 +1249,14 @@ public class HomeActivity extends Activity {
         for (int d : DENSITIES) ds.addView(choice(String.valueOf(d), d == dpi, v -> setDensity(d)));
         dsScroll.addView(ds);
         s.addView(dsScroll, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
         s.addView(text("Wallpaper", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         LinearLayout wp = new LinearLayout(this);
         wp.setOrientation(LinearLayout.HORIZONTAL);
         wp.addView(choice("Choose", false, v -> pickWallpaper()));
         wp.addView(choice("None", !wallpaperFile().exists(), v -> removeWallpaper()));
         s.addView(wp, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
         s.addView(text(n >= 3 ? "Main display app" : "Main app", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
@@ -1346,7 +1355,7 @@ public class HomeActivity extends Activity {
         });
         s.addView(edit, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         TextView reset = choice(n >= 3 ? "Reset shortcuts" : "Reset apps", false, v -> {
-            prefs.edit().remove("shortcuts").apply();   // back to the built-in default list
+            prefs.edit().remove("shortcuts").apply();
             settingsOpen = false;
             rebuildPanel();
         });
@@ -1355,13 +1364,13 @@ public class HomeActivity extends Activity {
         done.setPadding(0, dp(10), 0, dp(4));
         done.setOnClickListener(v -> { settingsOpen = false; rebuildPanel(); });
         s.addView(done);
+
         LinearLayout wrap = new LinearLayout(this);
         wrap.setPadding(0, dp(6), 0, 0);
         wrap.addView(s, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return wrap;
     }
 
-    /** "Label  [On]" row; tapping the chip flips a saved on/off setting. */
     private View toggleRow(String label, String key) { return toggleRow(label, key, true); }
 
     private View toggleRow(String label, String key, boolean byDefault) {
@@ -1389,21 +1398,22 @@ public class HomeActivity extends Activity {
 
     private View buildShortcuts(int n) {
         List<View> tiles = new ArrayList<>();
-        // Always first: the main display app's icon, which goes back home with it in the main window.
         View home = appTile(navApp());
         home.setOnClickListener(v -> goHome());
         tiles.add(home);
+
         List<String> list = shortcuts();
         for (int i = 0; i < list.size(); i++) {
             String entry = list.get(i);
-            if (navApp().equals(entry.split("/")[0])) continue;   // already the first tile
+            if (navApp().equals(entry.split("/")[0])) continue;
             View t = null;
             if (isWazeEntry(entry)) t = wazeTile(entry);
             else if (entry.contains("/")) t = activityTile(ComponentName.unflattenFromString(entry));
             else if (pm.getLaunchIntentForPackage(entry) != null) t = appTile(entry);
-            if (t == null) continue;   // app was uninstalled
+            if (t == null) continue;
             tiles.add(editing ? editable(t, i, list.size()) : t);
         }
+
         if (editing) {
             tiles.add(iconTile("+", "Add", v -> showPicker()));
             tiles.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
@@ -1414,7 +1424,6 @@ public class HomeActivity extends Activity {
         return rows(tiles, n);
     }
 
-    /** Wrap a shortcut tile with move-left, remove and move-right buttons for edit mode. */
     private View editable(View tile, int index, int count) {
         tile.setOnClickListener(null);
         LinearLayout box = column();
@@ -1438,21 +1447,18 @@ public class HomeActivity extends Activity {
         return b;
     }
 
-    /**
-     * Bottom bar (only when needed): the voice button and (when placed at the bottom) the
-     * Wi-Fi and cell indicators on the right. One row when it fits, stacked otherwise.
-     * Kept clear of the bottom-edge Home gesture strip.
-     */
     private View buildBottomBar(int n) {
         boolean mic = prefs.getBoolean("show_mic", false);
         boolean signals = "bottom".equals(signalPlace());
         boolean oneRow = n >= 4 || (n == 3 && !mic);
+
         LinearLayout box = new LinearLayout(this);
         box.setPadding(0, dp(2), dp(4), dp(6));
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
-        voiceStatus = text("", 13, TEXT);   // what built-in voice heard, left of the mic
+
+        voiceStatus = text("", 13, TEXT);
         voiceStatus.setSingleLine(true);
         voiceStatus.setEllipsize(TextUtils.TruncateAt.START);
         voiceStatus.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
@@ -1463,7 +1469,6 @@ public class HomeActivity extends Activity {
             if (signals && oneRow) micLp.rightMargin = dp(16);
             buttons.addView(assistantButton(), micLp);
         }
-        // One row when it fits (3 icons without the assistant, or 4); else Wi-Fi and cell under the buttons.
         if (signals && oneRow) {
             box.setOrientation(LinearLayout.HORIZONTAL);
             buttons.addView(signalsRow());
@@ -1481,11 +1486,23 @@ public class HomeActivity extends Activity {
         return box;
     }
 
-    private String signalPlace() { return prefs.getString("signals", "off"); }   // Android's status bar already shows them
+    private String signalPlace() { return prefs.getString("signals", "off"); }
+
+    private View signalsRowCompact() {
+        newSignalViews();
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        row.addView(wifiLabel);
+        row.addView(wifiBars, barParams());
+        row.addView(new View(this), new LinearLayout.LayoutParams(dp(20), 1));
+        row.addView(cellLabel);
+        row.addView(cellBars, barParams());
+        return row;
+    }
 
     private View assistantButton() {
         ImageView assistant = new ImageView(this);
-        // No generated R class in this Gradle-free build, so look the icon up by name.
         assistant.setImageResource(getResources().getIdentifier("ic_mic", "drawable", getPackageName()));
         assistant.setScaleType(ImageView.ScaleType.CENTER);
         GradientDrawable dot = rounded(listening ? LISTENING : ACCENT, 0);
@@ -1504,7 +1521,6 @@ public class HomeActivity extends Activity {
         cellLabel = text("", 13, DIM);
     }
 
-    /** Bigger Wi-Fi and cell icons where Android's sit in the status bar. */
     private View statusSignals() {
         newSignalViews();
         wifiBars = new SignalBars(this, TEXT, STATUS_ICON_OFF);
@@ -1513,7 +1529,7 @@ public class HomeActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
-        row.setPadding(0, dp(STATUS_ROW_DP - 19), sysDp(STATUS_ICON_DP), 0);   // Android's location icon stays at the far right
+        row.setPadding(0, dp(STATUS_ROW_DP - 19), sysDp(STATUS_ICON_DP), 0);
         row.addView(wifiBars, new LinearLayout.LayoutParams(dp(26), dp(19)));
         LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(dp(22), dp(17));
         cell.leftMargin = dp(8);
@@ -1522,10 +1538,9 @@ public class HomeActivity extends Activity {
     }
 
     private static final int STATUS_ROW_DP = 22;
-    private static final int STATUS_ICON_DP = 44;            // room for Android's location icon
-    private static final int STATUS_ICON_OFF = 0x59FFFFFF;   // unfilled bars: see-through white, as Android draws them
+    private static final int STATUS_ICON_DP = 44;
+    private static final int STATUS_ICON_OFF = 0x59FFFFFF;
 
-    /** Wi-Fi and cell side by side (wide panels). */
     private View signalsRow() {
         newSignalViews();
         LinearLayout row = new LinearLayout(this);
@@ -1539,7 +1554,6 @@ public class HomeActivity extends Activity {
         return row;
     }
 
-    /** Wi-Fi above cell (narrow panels). */
     private View signalsStack() {
         newSignalViews();
         LinearLayout stack = new LinearLayout(this);
@@ -1570,7 +1584,6 @@ public class HomeActivity extends Activity {
         return lp;
     }
 
-    /** Start the system assistant listening ("navigate to Walmart", "call Stacy", ...). */
     private void startAssistant() {
         String mode = assistantMode();
         if ("builtin".equals(mode)) { toggleListening(); return; }
@@ -1578,7 +1591,7 @@ public class HomeActivity extends Activity {
         String[] actions = {"android.intent.action.VOICE_ASSIST", Intent.ACTION_VOICE_COMMAND, Intent.ACTION_ASSIST};
         for (String a : actions) {
             Intent i = new Intent(a).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (app != null) i.setPackage(app);   // the chosen app's voice screen, if it has one
+            if (app != null) i.setPackage(app);
             if (i.resolveActivity(pm) == null) continue;
             try {
                 startActivity(i);
@@ -1587,13 +1600,9 @@ public class HomeActivity extends Activity {
                 Log.w(TAG, "assistant " + a + " failed", e);
             }
         }
-        if (app != null) { open(app); return; }   // no voice screen: just open the app
+        if (app != null) { open(app); return; }
         Toast.makeText(this, "No assistant available", Toast.LENGTH_SHORT).show();
     }
-
-    // ---- built-in voice navigation ----
-    // Listens with Android's speech recognizer while the map stays in view, shows what it heard on the panel,
-    // and sends the destination straight to the main display app, which starts the route itself.
 
     private static final int LISTENING = 0xFFE5534B;
     private SpeechRecognizer recognizer;
@@ -1678,7 +1687,6 @@ public class HomeActivity extends Activity {
         return r == null || r.isEmpty() ? null : r.get(0);
     }
 
-    /** "Navigate to In-N-Out", "take me to Costco", "directions to work" or just "In-N-Out": the place. */
     static String destination(String heard) {
         String s = heard.trim().replaceAll("[.!?]+$", "");
         String place = s.replaceFirst("(?i)^(please\\s+)?(navigate|navigation|directions|drive|take me|get me|go|head|route)"
@@ -1686,7 +1694,6 @@ public class HomeActivity extends Activity {
         return place.isEmpty() ? s : place;
     }
 
-    /** Start the route in the main display app: Waze and Google Maps go straight to the best match. */
     private void navigateTo(String place) {
         String pkg = navApp(), q = Uri.encode(place);
         Intent i = new Intent(Intent.ACTION_VIEW).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -1698,22 +1705,16 @@ public class HomeActivity extends Activity {
         sendToMainApp(i, pkg);
     }
 
-    /** Hand the main display app an intent (a destination), bringing its window back over whatever was open. */
     private void sendToMainApp(Intent i, String pkg) {
-        paneApp = null;   // the main display app comes back over whatever was open
+        paneApp = null;
         paneTarget = pkg;
         if (openedAt.containsKey(pkg)) {
-            startPane(i, WINDOWING_MODE_MULTI_WINDOW);   // its window is already open
+            startPane(i, WINDOWING_MODE_MULTI_WINDOW);
         } else {
-            launchMaps();   // open its window first, then send the destination once it's settled
+            launchMaps();
             main.postDelayed(() -> startPane(i, WINDOWING_MODE_MULTI_WINDOW), 1500);
         }
     }
-
-    // ---- Waze destination shortcuts ----
-    // Saved in the shortcut list as "waze:home", "waze:work" or "waze:<name>:<address>" (name and address
-    // Uri-encoded, so they hold no ':' or '|'). Waze's navigate=yes links start guidance on its fastest route
-    // straight away, skipping the route preview that a search inside Waze always shows.
 
     static boolean isWazeEntry(String entry) { return entry.startsWith("waze:"); }
 
@@ -1760,24 +1761,21 @@ public class HomeActivity extends Activity {
         try {
             return tile(appIcon(WAZE), wazeLabel(entry), v -> startWaze(entry));
         } catch (PackageManager.NameNotFoundException e) {
-            return null;   // Waze was uninstalled
+            return null;
         }
     }
-
-    // ---- signal indicators ----
 
     private final Runnable signalTick = new Runnable() {
         @Override public void run() {
             updateSignals();
-            if (wifiBars != null) main.postDelayed(this, SIGNAL_REFRESH_MS);   // only while the indicators are shown
+            if (wifiBars != null) main.postDelayed(this, SIGNAL_REFRESH_MS);
         }
     };
 
     @SuppressWarnings("deprecation")
     private void updateSignals() {
-        if (wifiBars == null) return;   // indicators turned off
-        // WifiManager redacts the connection for apps without location access, so find the Wi-Fi
-        // network through ConnectivityManager; its WifiInfo still carries the signal strength.
+        if (wifiBars == null) return;
+
         WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         WifiInfo info = null;
@@ -1794,7 +1792,7 @@ public class HomeActivity extends Activity {
         boolean wifiUp = wifi != null && info != null && info.getRssi() > -127;
         if (wifiUp) {
             int max = wifi.getMaxSignalLevel();
-            int lvl = wifi.calculateSignalLevel(info.getRssi());   // 0..max
+            int lvl = wifi.calculateSignalLevel(info.getRssi());
             wifiBars.setLevel(Math.max(1, Math.round(4f * lvl / Math.max(1, max))));
             wifiLabel.setText("Wi-Fi");
             wifiLabel.setTextColor(TEXT);
@@ -1808,9 +1806,9 @@ public class HomeActivity extends Activity {
         SignalStrength ss = tel == null ? null : tel.getSignalStrength();
         String operator = tel == null ? "" : tel.getNetworkOperatorName();
         if (ss != null && operator != null && !operator.isEmpty()) {
-            cellBars.setLevel(Math.max(1, ss.getLevel()));   // 0..4; one bar while connected, like Android's
+            cellBars.setLevel(Math.max(1, ss.getLevel()));
             String type = networkType(tel);
-            if (columns <= 3) cellLabel.setText(type.isEmpty() ? "Cell" : type);   // narrower panels: just "LTE"
+            if (columns <= 3) cellLabel.setText(type.isEmpty() ? "Cell" : type);
             else cellLabel.setText(type.isEmpty() ? operator.trim() : operator.trim() + " · " + type);
             cellLabel.setTextColor(TEXT);
         } else {
@@ -1823,7 +1821,7 @@ public class HomeActivity extends Activity {
     private static String networkType(TelephonyManager tel) {
         int t;
         try {
-            t = tel.getDataNetworkType();   // needs READ_PHONE_STATE, granted over ADB
+            t = tel.getDataNetworkType();
         } catch (SecurityException e) {
             return "";
         }
@@ -1856,15 +1854,11 @@ public class HomeActivity extends Activity {
         return grid;
     }
 
-    /**
-     * Now-playing card. 3+ icons wide: artwork beside title, artist and controls.
-     * 2 icons wide: small artwork beside the title, with the controls on their own row.
-     */
     private View buildMediaCard(int n) {
         boolean wide = n >= 3;
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(rounded(wallpaperFile().exists() ? 0xB31B2428 : CARD, 16));   // let a wallpaper show through
+        card.setBackground(rounded(wallpaperFile().exists() ? 0xB31B2428 : CARD, 16));
         card.setPadding(dp(8), dp(8), dp(8), dp(6));
 
         LinearLayout top = new LinearLayout(this);
@@ -1889,7 +1883,6 @@ public class HomeActivity extends Activity {
         info.addView(mediaTitle);
         info.addView(mediaArtist);
 
-        // Buttons: skip track (|◀ ▶|) and/or seek by the chosen seconds (↺15 15↻), per settings.
         String buttons = prefs.getString("media_buttons", "both");
         boolean track = !"seek".equals(buttons), seek = !"track".equals(buttons);
         int secs = seekSeconds();
@@ -1925,13 +1918,11 @@ public class HomeActivity extends Activity {
             controls.addView(next);
         }
 
-        // Three buttons fit beside the artwork on wide panels; five get their own row.
         if (wide && !five) info.addView(controls);
         top.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         card.addView(top);
         if (!wide || five) card.addView(controls, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Progress bar with time remaining, shown when the app reports a track length.
         progressRow = new LinearLayout(this);
         progressRow.setOrientation(LinearLayout.HORIZONTAL);
         progressRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -1951,16 +1942,14 @@ public class HomeActivity extends Activity {
         return card;
     }
 
-    /** Full-screen app browser: search, recently opened apps, then every app A-Z. */
     private class BrowserView extends FrameLayout {
         private final EditText search;
         private final LinearLayout recentRow;
         private final View recentSection;
-        private View wazeGoTo;   // "Go to <typed text>" in the shortcut picker
+        private View wazeGoTo;
         private final List<App> all = new ArrayList<>();
         private final List<App> shown = new ArrayList<>();
         private final BaseAdapter adapter;
-
         private final int pick;
 
         BrowserView(Context c, int pick) {
@@ -1968,8 +1957,8 @@ public class HomeActivity extends Activity {
             this.pick = pick;
             setBackgroundColor(BG);
             setFocusableInTouchMode(true);
-            // Focusable for the search box, but without Android's focus highlight, which greyed out the whole browser.
             setDefaultFocusHighlightEnabled(false);
+
             LinearLayout box = new LinearLayout(c);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setPadding(dp(20), dp(12), dp(20), dp(12));
@@ -2052,7 +2041,6 @@ public class HomeActivity extends Activity {
             fillRecent();
         }
 
-        /** Home, Work and (once something is typed) "Go to <it>": shortcuts that start Waze driving there. */
         private View wazeSection(Context c) {
             LinearLayout section = new LinearLayout(c);
             section.setOrientation(LinearLayout.VERTICAL);
@@ -2130,7 +2118,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** An app in the browser, with its name looked up once. */
     private static final class App {
         final ComponentName cn;
         final String label, lower;
@@ -2146,8 +2133,6 @@ public class HomeActivity extends Activity {
         return new ComponentName(r.activityInfo.packageName, r.activityInfo.name);
     }
 
-    // ---- launching ----
-
     private void open(String pkg) {
         if (navApp().equals(pkg)) { launchMaps(); return; }
         Intent i = pm.getLaunchIntentForPackage(pkg);
@@ -2156,7 +2141,7 @@ public class HomeActivity extends Activity {
 
     private void launch(ComponentName cn) {
         hideBrowser();
-        paneLaunchedAt = 0;   // a full-screen launch (Box Tools' icons) is meant to cover the home screen
+        paneLaunchedAt = 0;
         if (cn == null) return;
         remember(cn);
         if (navApp().equals(cn.getPackageName())) { launchMaps(); return; }
@@ -2164,8 +2149,6 @@ public class HomeActivity extends Activity {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         if (opensInPane(cn)) {
             String real = TRAMPOLINES.get(cn.flattenToString());
-            // The real screen has no MAIN/LAUNCHER filter, and Android 14 blocks explicit intents that don't
-            // match a component's filters, so open it with a plain intent.
             Intent target = real == null ? i : new Intent().setComponent(ComponentName.unflattenFromString(real))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             launchInPane(target, cn.getPackageName());
@@ -2194,8 +2177,6 @@ public class HomeActivity extends Activity {
         prefs.edit().putString("recent", TextUtils.join("|", list)).apply();
     }
 
-    // ---- now playing ----
-
     private ComponentName listenerName() { return new ComponentName(this, MediaListener.class); }
 
     private void pickController() {
@@ -2206,7 +2187,6 @@ public class HomeActivity extends Activity {
             return;
         }
         watch(list);
-        // The app that's playing; otherwise stay on the one shown (the last one played), then the most recent.
         MediaController best = null, current = null;
         for (MediaController c : list) {
             PlaybackState s = c.getPlaybackState();
@@ -2270,10 +2250,9 @@ public class HomeActivity extends Activity {
         showProgress();
     }
 
-    private Bitmap artFit;   // album art scaled to the card, made once per track
+    private Bitmap artFit;
     private String artKey;
 
-    /** Players send art up to 1000+ pixels square; the card shows it at 56 dp at most. */
     private Bitmap fitArt(Bitmap art, MediaMetadata m) {
         String key = m.getString(MediaMetadata.METADATA_KEY_MEDIA_ID) + "|" + m.getString(MediaMetadata.METADATA_KEY_TITLE)
                 + "|" + m.getString(MediaMetadata.METADATA_KEY_ALBUM) + "|" + art.getWidth() + "x" + art.getHeight();
@@ -2290,7 +2269,6 @@ public class HomeActivity extends Activity {
 
     private int seekSeconds() { return prefs.getInt("seek_seconds", 15); }
 
-    /** Where playback is now, extrapolated from the app's last position report. */
     private long currentPosition(PlaybackState s) {
         long position = s.getPosition();
         if (s.getState() == PlaybackState.STATE_PLAYING) {
@@ -2299,7 +2277,6 @@ public class HomeActivity extends Activity {
         return Math.max(0, position);
     }
 
-    /** Jump forward or back; uses seekTo when the app supports it, otherwise its own fast-forward/rewind. */
     private void seekBy(long deltaMs) {
         if (controller == null) return;
         PlaybackState s = controller.getPlaybackState();
@@ -2316,7 +2293,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** Refresh the progress bar and time remaining; repeats every second while something plays. */
     private final Runnable progressTick = this::showProgress;
 
     private void showProgress() {
@@ -2330,10 +2306,10 @@ public class HomeActivity extends Activity {
             return;
         }
         boolean playing = s.getState() == PlaybackState.STATE_PLAYING;
-        long position = Math.min(duration, currentPosition(s));   // apps report position only occasionally
+        long position = Math.min(duration, currentPosition(s));
         progressRow.setVisibility(View.VISIBLE);
         mediaProgress.setProgress(position / (float) duration, playing);
-        mediaRemaining.setText("\u2212" + clockTime(duration - position));
+        mediaRemaining.setText("−" + clockTime(duration - position));
         if (playing) main.postDelayed(progressTick, 1000);
     }
 
@@ -2354,9 +2330,6 @@ public class HomeActivity extends Activity {
         catch (PackageManager.NameNotFoundException e) { return pkg; }
     }
 
-    // ---- app icons and names ----
-    // Loaded once and kept until an app is installed, updated or removed (see appsChanged): every
-    // panel rebuild and app-browser scroll would otherwise go back to the package manager.
     private final java.util.Map<String, Drawable.ConstantState> iconCache = new java.util.HashMap<>();
     private final java.util.Map<String, String> labelCache = new java.util.HashMap<>();
 
@@ -2396,8 +2369,6 @@ public class HomeActivity extends Activity {
         return label;
     }
 
-    // ---- small view helpers ----
-
     private View appTile(String pkg) {
         try {
             return tile(appIcon(pkg), appLabel(pkg), v -> open(pkg));
@@ -2425,7 +2396,6 @@ public class HomeActivity extends Activity {
         return t;
     }
 
-    /** Opens MiniCarHome's settings; sits beside All apps so nothing covers the shortcuts. */
     private View optionsTile() {
         ImageView gear = new ImageView(this);
         gear.setImageResource(getResources().getIdentifier("ic_settings", "drawable", getPackageName()));
@@ -2449,7 +2419,6 @@ public class HomeActivity extends Activity {
         return t;
     }
 
-    /** Fill in a tile made by tile(); the app browser reuses tiles as it scrolls. */
     private void bindTile(View tile, Drawable icon, String name, View.OnClickListener click) {
         LinearLayout t = (LinearLayout) tile;
         ((ImageView) t.getChildAt(0)).setImageDrawable(icon);
@@ -2481,7 +2450,6 @@ public class HomeActivity extends Activity {
         return l;
     }
 
-    /** Media transport button: bigger text and touch target than the settings controls. */
     private TextView mediaButton(String s, boolean wide, boolean five) {
         TextView b = text(s, five ? (wide ? 20 : 16) : (wide ? 24 : 22), TEXT);
         b.setGravity(Gravity.CENTER);
@@ -2525,16 +2493,13 @@ public class HomeActivity extends Activity {
         return lp;
     }
 
-    // The panel is laid out at a fixed scale (1.275 px per unit, 1.7x the box's original 120 dpi), so raising
-    // Android's display size or font size (to enlarge other apps) leaves this layout unchanged.
     private static final float UI_SCALE = 1.275f;
-    private static final float TEXT_SCALE = UI_SCALE * 1.3f;   // text was tuned with Android's font size at 1.3
+    private static final float TEXT_SCALE = UI_SCALE * 1.3f;
 
     private int dp(int v) {
         return Math.round(v * UI_SCALE);
     }
 
-    /** Real dp at the current display density, for things Android draws itself (the freeform caption bar). */
     private int sysDp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
