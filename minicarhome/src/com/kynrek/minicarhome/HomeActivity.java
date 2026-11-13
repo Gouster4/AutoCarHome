@@ -828,15 +828,17 @@ public class HomeActivity extends Activity {
     private void openBrowser(int pick) {
         if (browserShown || !Settings.canDrawOverlays(this)) return;
         browser = new BrowserView(this, pick);
+    
+        Rect screen = wm.getMaximumWindowMetrics().getBounds();
+        boolean horizontalPanel = "top".equals(panelPos) || "bottom".equals(panelPos);    
 
-        int width = wm.getMaximumWindowMetrics().getBounds().width() - panelWidth();
-        int gravity = "left".equals(panelPos) ? Gravity.TOP | Gravity.END : Gravity.TOP | Gravity.START;
-        if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
-            width = wm.getMaximumWindowMetrics().getBounds().width();
-            gravity = Gravity.TOP | Gravity.START;
-        }
+        int width = horizontalPanel ? screen.width() : screen.width() - panelWidth();
+        int gravity = horizontalPanel
+            ? Gravity.TOP | Gravity.START
+            : ("left".equals(panelPos) ? Gravity.TOP | Gravity.END : Gravity.TOP | Gravity.START);
 
-        wm.addView(browser, overlayParams(width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
+        wm.addView(browser, overlayParams(
+                width, WindowManager.LayoutParams.MATCH_PARENT, gravity, true));
         browserShown = true;
     }
 
