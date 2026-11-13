@@ -1,10 +1,9 @@
-name: Build and Release MiniCarHome
+name: Build and Release
 
 on:
   push:
     branches:
       - main
-    # Optional: Automatically trigger when you push a version tag (e.g., v1.0.0)
     tags:
       - 'v*'
 
@@ -33,12 +32,10 @@ jobs:
           api-level: 36
           build-tools-version: '36.0.0'
 
-      - name: Create local debug keystore
+      - name: Restore Keystore from GitHub Secrets
         run: |
-          keytool -genkey -v -keystore ~/.android/debug.keystore \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p ~/.android
+          echo "${{ secrets.SIGNING_KEY_STORE_BASE64 }}" | base64 --decode > ~/.android/debug.keystore
 
       - name: Make build script executable and run it
         working-directory: minicarhome
@@ -49,40 +46,16 @@ jobs:
       - name: Determine Version & Tag
         id: versioning
         run: |
-          # If triggered by a tag, use the tag name. Otherwise, generate a CalVer/SemVer (e.g., v2026.11.13 or v1.0.<build_number>)
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
           else
             DATE_TAG=$(date +'%Y.%m.%d')
             VERSION="v${DATE_TAG}-${GITHUB_SHA::7}"
-          echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
-          echo "is_tag=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Generate Changelog
-        id: changelog
-        uses: salida/changelog-action@v1 # Or generate clean commit logs automatically
-        with:
-          exclude_types: chore,style,refactor
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Fallback inline git log if action is skipped or unneeded:
-        continue-on-error: true
+          echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versioning.outputs.tag_name }}
-          name: "MiniCarHome Release ${{ steps.versioning.outputs.tag_name }}"
-          files: minicarhome/out/minicarhome.apk
-          body: |
-            ### 🚗 MiniCarHome Automatic Build
-            Automated build compiled directly from commit `${{ github.sha }}`.
-            
-            **Changes included:**
-            - Automated build via GitHub Actions runner.
-            - Compiled with Android SDK 36 and Build-Tools 36.0.0.
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: "AutoCarHome Release ${{ steps.
