@@ -914,101 +914,178 @@ public class HomeActivity extends Activity {
     }
     
     private View buildCompactBar() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackground(new ColorDrawable(BG));
-        bar.setPadding(dp(8), dp(4), dp(8), dp(4));
-        bar.setGravity(Gravity.CENTER_VERTICAL);
+    FrameLayout bar = new FrameLayout(this);
+    bar.setBackgroundColor(BG);
+    bar.setPadding(dp(8), dp(4), dp(8), dp(4));
 
-        LinearLayout icons = new LinearLayout(this);
-        icons.setOrientation(LinearLayout.HORIZONTAL);
-        icons.setGravity(Gravity.CENTER_VERTICAL);
+    LinearLayout icons = new LinearLayout(this);
+    icons.setOrientation(LinearLayout.HORIZONTAL);
+    icons.setGravity(Gravity.CENTER_VERTICAL);
 
-        List<View> userTiles = new ArrayList<>();
+    List<View> userTiles = new ArrayList<>();
 
-        icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
+    // Fixed icons: app drawer, optional assistant, then home app.
+    icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
+            new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+
+    if (prefs.getBoolean("show_mic", false)) {
+        FrameLayout micSlot = new FrameLayout(this);
+        micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
+                dp(34), dp(34), Gravity.CENTER));
+        icons.addView(micSlot,
                 new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
-        if (prefs.getBoolean("show_mic", false)) {
-            FrameLayout micSlot = new FrameLayout(this);
-                micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                    dp(34), dp(34), Gravity.CENTER));
-            icons.addView(micSlot,
-                    new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
-        }
-
-        View home = appTile(navApp());
-        home.setOnClickListener(v -> goHome());
-        icons.addView(home, new LinearLayout.LayoutParams(
-                dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
-
-        List<String> list = shortcuts();
-        for (String entry : list) {
-            if (navApp().equals(entry.split("/")[0])) continue;
-    
-            View tile = null;
-            if (isWazeEntry(entry)) tile = wazeTile(entry);
-            else if (entry.contains("/")) tile = activityTile(ComponentName.unflattenFromString(entry));
-            else if (pm.getLaunchIntentForPackage(entry) != null) tile = appTile(entry);
-
-            if (tile != null) {
-                if (editing) tile = editable(tile, userTiles.size(), list.size());
-                userTiles.add(tile);
-                icons.addView(tile, new LinearLayout.LayoutParams(
-                        dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
-            }
-        }
-
-        if (editing) {
-            icons.addView(iconTile("+", "Add", v -> showPicker()),
-                    new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
-            icons.addView(iconTile("✓", "Done", v -> {
-                editing = false;
-                rebuildPanel();
-            }), new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-
-        String place = signalPlace();
-        if ("bottom".equals(place) || "top".equals(place)) {
-            actions.addView(signalsRowCompact(), new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-
-        LinearLayout weather = buildCompactWeather();
-
-        FrameLayout mediaSlot = new FrameLayout(this);
-        mediaSlot.setMinimumWidth(dp(170));
-        mediaSlot.addView(buildCompactMedia(), new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
-
-        bar.addView(icons, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        bar.addView(mediaSlot, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
-        bar.addView(actions, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        bar.addView(weather, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // If the bar is crowded, drop user shortcuts from the end to reserve space
-        // for the media controls, actions, and right-aligned weather.
-        bar.post(() -> {
-            int minMediaWidth = dp(170);
-            int requiredWidth = minMediaWidth + actions.getMeasuredWidth()
-                    + weather.getMeasuredWidth() + dp(16);
-
-            for (int i = userTiles.size() - 1;
-                 i >= 0 && icons.getMeasuredWidth() + requiredWidth > bar.getWidth();
-                 i--) {
-                icons.removeView(userTiles.get(i));
-            }
-        });
-
-        return bar;
     }
+
+    View home = appTile(navApp());
+    home.setOnClickListener(v -> goHome());
+    icons.addView(home,
+            new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+
+    // User shortcuts follow the fixed icons.
+    List<String> list = shortcuts();
+    for (String entry : list) {
+        if (navApp().equals(entry.split("/")[0])) continue;
+
+        View tile = null;
+        if (isWazeEntry(entry)) {
+            tile = wazeTile(entry);
+        } else if (entry.contains("/")) {
+            tile = activityTile(ComponentName.unflattenFromString(entry));
+        } else if (pm.getLaunchIntentForPackage(entry) != null) {
+            tile = appTile(entry);
+        }
+
+        if (tile != null) {
+            if (editing) tile = editable(tile, userTiles.size(), list.size());
+            userTiles.add(tile);
+            icons.addView(tile, new LinearLayout.LayoutParams(
+                    dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+    }
+
+    if (editing) {
+        icons.addView(iconTile("+", "Add", v -> showPicker()),
+                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+        icons.addView(iconTile("✓", "Done", v -> {
+            editing = false;
+            rebuildPanel();
+        }), new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    // Right-side indicators and weather.
+    LinearLayout rightGroup = new LinearLayout(this);
+    rightGroup.setOrientation(LinearLayout.HORIZONTAL);
+    rightGroup.setGravity(Gravity.CENTER_VERTICAL);
+
+    String place = signalPlace();
+    if ("bottom".equals(place) || "top".equals(place)) {
+        rightGroup.addView(signalsRowCompact(),
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    rightGroup.addView(buildCompactWeather(),
+            new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+
+    // Media is centered in the bar when possible, and clamped between the
+    // icons and right-side group to prevent overlap.
+    FrameLayout mediaSlot = new FrameLayout(this);
+    mediaSlot.addView(buildCompactMedia(), new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER));
+
+    if (!prefs.getBoolean("show_media", true)) {
+        mediaSlot.setVisibility(View.GONE);
+    }
+
+    FrameLayout.LayoutParams iconsParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.LEFT | Gravity.CENTER_VERTICAL);
+    bar.addView(icons, iconsParams);
+
+    FrameLayout.LayoutParams rightParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+    bar.addView(rightGroup, rightParams);
+
+    FrameLayout.LayoutParams mediaParams = new FrameLayout.LayoutParams(
+            dp(240),
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.LEFT | Gravity.CENTER_VERTICAL);
+    bar.addView(mediaSlot, mediaParams);
+
+    Runnable repositionMedia = () ->
+            positionCompactMedia(bar, icons, rightGroup, mediaSlot, userTiles);
+
+    bar.addOnLayoutChangeListener((v, left, top, right, bottom,
+                                   oldLeft, oldTop, oldRight, oldBottom) ->
+            repositionMedia.run());
+    bar.post(repositionMedia);
+
+    return bar;
+}
+
+private void positionCompactMedia(
+        FrameLayout bar,
+        LinearLayout icons,
+        LinearLayout rightGroup,
+        View mediaSlot,
+        List<View> userTiles) {
+
+    if (mediaSlot.getVisibility() != View.VISIBLE
+            || bar.getWidth() == 0
+            || icons.getWidth() == 0
+            || rightGroup.getWidth() == 0) {
+        return;
+    }
+
+    int gap = dp(8);
+    int minimumMediaWidth = dp(170);
+    int preferredMediaWidth = dp(240);
+
+    int freeWidth = rightGroup.getLeft() - icons.getRight() - 2 * gap;
+
+    // Drop trailing user shortcuts until there is room for the minimum media
+    // width. The drawer, assistant and home app are never in userTiles.
+    if (freeWidth < minimumMediaWidth && !userTiles.isEmpty()) {
+        View lastTile = userTiles.remove(userTiles.size() - 1);
+        icons.removeView(lastTile);
+        bar.post(() ->
+                positionCompactMedia(bar, icons, rightGroup, mediaSlot, userTiles));
+        return;
+    }
+
+    if (freeWidth < minimumMediaWidth) {
+        mediaSlot.setVisibility(View.INVISIBLE);
+        return;
+    }
+
+    mediaSlot.setVisibility(View.VISIBLE);
+
+    int mediaWidth = Math.min(preferredMediaWidth, freeWidth);
+    FrameLayout.LayoutParams params =
+            (FrameLayout.LayoutParams) mediaSlot.getLayoutParams();
+
+    if (params.width != mediaWidth) {
+        params.width = mediaWidth;
+        mediaSlot.setLayoutParams(params);
+        return; // Reposition after the new width has been laid out.
+    }
+
+    int minLeft = icons.getRight() + gap;
+    int maxLeft = rightGroup.getLeft() - gap - mediaWidth;
+    int centeredLeft = (bar.getWidth() - mediaWidth) / 2;
+
+    // Keep media centered unless that would collide with either group.
+    int mediaLeft = Math.max(minLeft, Math.min(centeredLeft, maxLeft));
+    mediaSlot.setTranslationX(mediaLeft - mediaSlot.getLeft());
+}
     
     private View buildSidePanel() {
         int n = columns;
