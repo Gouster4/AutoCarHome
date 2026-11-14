@@ -941,16 +941,16 @@ public class HomeActivity extends Activity {
     // Fixed icons: app drawer, optional assistant, then home app.
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-drawerParams.rightMargin = 1;
+drawerParams.rightMargin = 2;
 icons.addView(iconTile("☷", "All apps", v -> showBrowser()), drawerParams);
 
 if (prefs.getBoolean("show_mic", false)) {
     FrameLayout micSlot = new FrameLayout(this);
     micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-            dp(28), dp(28), Gravity.CENTER));
+            dp(24), dp(24), Gravity.CENTER));
 
     LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
-            dp(26), ViewGroup.LayoutParams.MATCH_PARENT);
+            dp(24), ViewGroup.LayoutParams.MATCH_PARENT);
     micParams.rightMargin = 1;
     icons.addView(micSlot, micParams);
 }
