@@ -2759,7 +2759,7 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
         t.addView(gear, new LinearLayout.LayoutParams(dp(48), dp(48)));
         t.addView(label("Options"));
         t.setContentDescription("Home Settings");
-        t.setOnClickListener(v -> { settingsOpen = true; editing = false; rebuildPanel(); });
+        t.setOnClickListener(v -> { hideBrowser(); settingsOpen = true; editing = false; rebuildPanel(); });
         return t;
     }
 
