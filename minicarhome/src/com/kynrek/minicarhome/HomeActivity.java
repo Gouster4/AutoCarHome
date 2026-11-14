@@ -2016,13 +2016,13 @@ private View buildCompactMedia() {
         }
     }
 
-    private View wazeTile(String entry) {
-        try {
-            return tile(appIcon(WAZE), wazeLabel(entry), v -> startWaze(entry));
-        } catch (PackageManager.NameNotFoundException e) {
-            return null;
-        }
+private View wazeTile(String entry) {
+    try {
+        return panelTile(appIcon(WAZE), wazeLabel(entry), v -> startWaze(entry));
+    } catch (PackageManager.NameNotFoundException e) {
+        return null;
     }
+}
 
     private final Runnable signalTick = new Runnable() {
         @Override public void run() {
@@ -2655,21 +2655,21 @@ adapter = new BaseAdapter() {
         return label;
     }
 
-    private View appTile(String pkg) {
+private View appTile(String pkg) {
     try {
         return panelTile(appIcon(pkg), appLabel(pkg), v -> open(pkg));
     } catch (PackageManager.NameNotFoundException e) {
         return new View(this);
     }
 }
-
-    private View activityTile(ComponentName cn) {
-        try {
-            return tile(activityIcon(cn), activityLabel(cn), v -> launch(cn));
-        } catch (PackageManager.NameNotFoundException | NullPointerException e) {
-            return null;
-        }
+    
+private View activityTile(ComponentName cn) {
+    try {
+        return panelTile(activityIcon(cn), activityLabel(cn), v -> launch(cn));
+    } catch (PackageManager.NameNotFoundException | NullPointerException e) {
+        return null;
     }
+}
 
 private boolean showPanelLabels() {
     return prefs.getBoolean("show_labels", false);
