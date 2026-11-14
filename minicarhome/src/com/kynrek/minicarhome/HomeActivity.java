@@ -936,7 +936,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     private View buildCompactBar() {
     FrameLayout bar = new FrameLayout(this);
     bar.setBackgroundColor(BG);
-    bar.setPadding(dp(8), dp(0), dp(8), dp(0));
+    bar.setPadding(dp(2), dp(0), dp(2), dp(0));
 
     LinearLayout icons = new LinearLayout(this);
     icons.setOrientation(LinearLayout.HORIZONTAL);
@@ -1326,7 +1326,7 @@ private View buildCompactMedia() {
     LinearLayout media = new LinearLayout(this);
     media.setOrientation(LinearLayout.HORIZONTAL);
     media.setGravity(Gravity.CENTER_VERTICAL);
-    media.setPadding(dp(6), dp(2), dp(6), dp(2));
+    media.setPadding(dp(6), dp(4), dp(6), dp(4));
     media.setBackground(rounded(0x24FFFFFF, dp(8)));
 
     mediaArt = new ImageView(this);
