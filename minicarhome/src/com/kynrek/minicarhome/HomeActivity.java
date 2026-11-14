@@ -207,7 +207,7 @@ public void onMetadataChanged(MediaMetadata m) {
 private final Runnable restoreCompactMediaControls = () -> {
     if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
     if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
-    if (repositionCompactMedia != null) repositionCompactMedia.run();
+    if (HomeActivity.this.repositionCompactMedia != null) HomeActivity.this.repositionCompactMedia.run();
 };
 
     
@@ -1061,13 +1061,13 @@ if (editing) {
             Gravity.LEFT | Gravity.CENTER_VERTICAL);
     bar.addView(mediaSlot, mediaParams);
 
-    Runnable repositionMedia = () ->
-            positionCompactMedia(bar, icons, rightGroup, mediaSlot, userTiles);
+    repositionCompactMedia = () ->
+            positionCompactMedia(bar, mediaSlot, compactIcons);
 
     bar.addOnLayoutChangeListener((v, left, top, right, bottom,
                                    oldLeft, oldTop, oldRight, oldBottom) ->
-            repositionMedia.run());
-    bar.post(repositionMedia);
+            repositionCompactMedia.run());
+    bar.post(repositionCompactMedia);
 
     return bar;
 }
