@@ -936,7 +936,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     private View buildCompactBar() {
     FrameLayout bar = new FrameLayout(this);
     bar.setBackgroundColor(BG);
-    bar.setPadding(dp(2), dp(0), dp(2), dp(0));
+    bar.setPadding(dp(0), dp(0), dp(0), dp(0));
 
     LinearLayout icons = new LinearLayout(this);
     icons.setOrientation(LinearLayout.HORIZONTAL);
