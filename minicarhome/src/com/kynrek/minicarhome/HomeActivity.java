@@ -717,7 +717,7 @@ public class HomeActivity extends Activity {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(48 * rowCount + 8);
+        return dp(36 * rowCount + 4);
     }
 
     private void setColumns(int n) {
@@ -945,9 +945,9 @@ public class HomeActivity extends Activity {
     if (prefs.getBoolean("show_mic", false)) {
         FrameLayout micSlot = new FrameLayout(this);
         micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(24), dp(24), Gravity.CENTER));
+                dp(36), dp(36), Gravity.CENTER));
         icons.addView(micSlot,
-                new LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     View home = appTile(navApp());
@@ -2687,7 +2687,7 @@ private void addPanelLabel(LinearLayout tile, String name) {
 
 private View panelTile(Drawable icon, String name, View.OnClickListener click) {
     LinearLayout tile = column();
-    int iconSize = isCompactPanel() ? dp(24) : dp(48);
+    int iconSize = isCompactPanel() ? dp(36) : dp(48);
     tile.addView(new ImageView(this),
         new LinearLayout.LayoutParams(iconSize, iconSize));
     addPanelLabel(tile, name);
