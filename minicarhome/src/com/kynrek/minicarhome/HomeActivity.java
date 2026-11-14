@@ -117,6 +117,10 @@ public class HomeActivity extends Activity {
     private String panelPos = "bottom";
     private boolean settingsOpen;
 
+    private boolean isCompactPanel() {
+        return "top".equals(panelPos) || "bottom".equals(panelPos);
+    }
+
     private TextView mapSlot;
     private static final int MAX_RECENT = 10;
     private static final String[] SHORTCUTS = {
@@ -713,7 +717,7 @@ public class HomeActivity extends Activity {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(72 * rowCount + 8);
+        return dp(48 * rowCount + 8);
     }
 
     private void setColumns(int n) {
@@ -936,20 +940,20 @@ public class HomeActivity extends Activity {
 
     // Fixed icons: app drawer, optional assistant, then home app.
     icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
-            new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
 
     if (prefs.getBoolean("show_mic", false)) {
         FrameLayout micSlot = new FrameLayout(this);
         micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(34), dp(34), Gravity.CENTER));
+                dp(36), dp(36), Gravity.CENTER));
         icons.addView(micSlot,
-                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     View home = appTile(navApp());
     home.setOnClickListener(v -> goHome());
     icons.addView(home,
-            new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
 
     // User shortcuts follow the fixed icons.
     List<String> list = shortcuts();
@@ -969,17 +973,17 @@ public class HomeActivity extends Activity {
             if (editing) tile = editable(tile, userTiles.size(), list.size());
             userTiles.add(tile);
             icons.addView(tile, new LinearLayout.LayoutParams(
-                    dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+                    dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
         }
     }
 
     if (editing) {
         icons.addView(iconTile("+", "Add", v -> showPicker()),
-                new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
         icons.addView(iconTile("✓", "Done", v -> {
             editing = false;
             rebuildPanel();
-        }), new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT));
+        }), new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     // Right-side indicators and weather.
@@ -2683,8 +2687,9 @@ private void addPanelLabel(LinearLayout tile, String name) {
 
 private View panelTile(Drawable icon, String name, View.OnClickListener click) {
     LinearLayout tile = column();
+    int iconSize = isCompactPanel() ? dp(24) : dp(48);
     tile.addView(new ImageView(this),
-            new LinearLayout.LayoutParams(dp(48), dp(48)));
+        new LinearLayout.LayoutParams(iconSize, iconSize));
     addPanelLabel(tile, name);
     bindTile(tile, icon, name, click);
     return tile;
@@ -2692,12 +2697,16 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
 
     
     private View iconTile(String glyphText, String name, View.OnClickListener click) {
-        TextView glyph = text(glyphText, 30, ACCENT);
+        boolean compact = isCompactPanel();
+        TextView glyph = text(glyphText, compact ? 20 : 30, ACCENT);
         glyph.setGravity(Gravity.CENTER);
         glyph.setBackground(rounded(CARD, 12));
+
         LinearLayout t = column();
-        t.addView(glyph, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        int iconSize = compact ? dp(36) : dp(48);
+        t.addView(glyph, new LinearLayout.LayoutParams(iconSize, iconSize));
         addPanelLabel(t, name);
+
         t.setOnClickListener(click);
         return t;
     }
@@ -2711,8 +2720,8 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
         gear.setPadding(dp(11), dp(11), dp(11), dp(11));
         LinearLayout t = column();
         t.addView(gear, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        addPanelLabel(t, "Options");
-        t.setContentDescription("MiniCarHome settings");
+        t.addView(label("Options"));
+        t.setContentDescription("Home Settings");
         t.setOnClickListener(v -> { settingsOpen = true; editing = false; rebuildPanel(); });
         return t;
     }
