@@ -10,6 +10,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -947,7 +949,7 @@ List<View> compactIcons = new ArrayList<>();
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
 drawerParams.rightMargin = dp(2);
-icons.addView(iconTile("☷", "All apps", v -> showBrowser()), drawerParams);
+icons.addView(appsGridTile("All apps", v -> showBrowser()), drawerParams);
 
 if (prefs.getBoolean("show_mic", false)) {
     FrameLayout micSlot = new FrameLayout(this);
@@ -1154,7 +1156,7 @@ private void positionCompactMedia(
         clockBox.setOrientation(n >= 3 ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         clockBox.setBaselineAligned(true);
 
-        boolean h24 = prefs.getBoolean("clock_24h", false);
+        boolean h24 = prefs.getBoolean("clock_24h", true);
         LinearLayout time = new LinearLayout(this);
         time.setOrientation(LinearLayout.HORIZONTAL);
         time.setBaselineAligned(true);
@@ -1265,7 +1267,7 @@ private LinearLayout buildCompactWeather() {
 
     // Compact layout uses the second line for the current time, not the forecast range.
     weatherRange = null;
-    boolean use24Hour = prefs.getBoolean("clock_24h", false);
+    boolean use24Hour = prefs.getBoolean("clock_24h", true);
     String timeFormat = use24Hour ? "HH:mm" : "h:mm a";
 
     TextClock compactClock = new TextClock(this);
@@ -1569,7 +1571,7 @@ private View buildCompactMedia() {
         s.addView(toggleRow(n >= 3 ? "Open apps in main window" : "Apps in main", "apps_in_pane"),
                 marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 12));
         s.addView(toggleRow("Clock & date", "show_clock"), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 12));
-        s.addView(toggleRow(n >= 3 ? "24-hour time" : "24-hour", "clock_24h", false), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
+        s.addView(toggleRow(n >= 3 ? "24-hour time" : "24-hour", "clock_24h", true), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
         s.addView(toggleRow("Media", "show_media"), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
         s.addView(toggleRow("Assistant", "show_mic", false), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
         if (prefs.getBoolean("show_mic", false)) {
@@ -1587,6 +1589,8 @@ private View buildCompactMedia() {
             asScroll.addView(as);
             s.addView(asScroll, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
         }
+        s.addView(toggleRow(n >= 3 ? "Hide recents in app drawer" : "Hide recents", "hide_recent", false),
+                marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
 
         s.addView(text("Media buttons", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         LinearLayout mb = new LinearLayout(this);
@@ -1720,7 +1724,7 @@ private View buildCompactMedia() {
             tiles.add(iconTile("+", "Add", v -> showPicker()));
             tiles.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
         } else {
-            tiles.add(iconTile("☷", "All apps", v -> showBrowser()));
+            tiles.add(appsGridTile("All apps", v -> showBrowser()));
         }
         return rows(tiles, n);
     }
@@ -2247,6 +2251,7 @@ private View wazeTile(String entry) {
         private final EditText search;
         private final LinearLayout recentRow;
         private final View recentSection;
+        private final boolean hideRecent;
         private View wazeGoTo;
         private final List<App> all = new ArrayList<>();
         private final List<App> shown = new ArrayList<>();
@@ -2296,7 +2301,8 @@ private View wazeTile(String entry) {
             scroller.addView(recentRow);
             recent.addView(scroller);
             recentSection = recent;
-            box.addView(recent);
+            hideRecent = prefs.getBoolean("hide_recent", false);
+            if (!hideRecent) box.addView(recent);
             box.addView(sectionLabel("ALL APPS"));
 
             Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
@@ -2399,11 +2405,12 @@ adapter = new BaseAdapter() {
             for (App a : all) {
                 if (needle.isEmpty() || a.lower.contains(needle)) shown.add(a);
             }
-            recentSection.setVisibility(needle.isEmpty() ? View.VISIBLE : View.GONE);
+            if (!hideRecent) recentSection.setVisibility(needle.isEmpty() ? View.VISIBLE : View.GONE);
             adapter.notifyDataSetChanged();
         }
 
         private void fillRecent() {
+            if (hideRecent) return;
             recentRow.removeAllViews();
             for (String flat : recentList()) {
                 ComponentName cn = ComponentName.unflattenFromString(flat);
@@ -2734,6 +2741,37 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
 }
 
     
+    /** App drawer tile: a 3x3 grid of dots drawn on the same card as iconTile. */
+    private View appsGridTile(String name, View.OnClickListener click) {
+        boolean compact = isCompactPanel();
+        final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        dotPaint.setColor(ACCENT);
+        View grid = new View(this) {
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                float w = getWidth(), h = getHeight();
+                float side = Math.min(w, h) * 0.46f;
+                float cell = side / 3f;
+                float r = cell * 0.36f;
+                float x0 = (w - side) / 2f, y0 = (h - side) / 2f;
+                for (int row = 0; row < 3; row++) {
+                    for (int col = 0; col < 3; col++) {
+                        canvas.drawCircle(x0 + cell * (col + 0.5f), y0 + cell * (row + 0.5f), r, dotPaint);
+                    }
+                }
+            }
+        };
+        grid.setBackground(rounded(CARD, 12));
+
+        LinearLayout t = column();
+        int iconSize = compact ? dp(36) : dp(48);
+        t.addView(grid, new LinearLayout.LayoutParams(iconSize, iconSize));
+        addPanelLabel(t, name);
+        t.setContentDescription(name);
+        t.setOnClickListener(click);
+        return t;
+    }
+
     private View iconTile(String glyphText, String name, View.OnClickListener click) {
         boolean compact = isCompactPanel();
         TextView glyph = text(glyphText, compact ? 20 : 30, ACCENT);
