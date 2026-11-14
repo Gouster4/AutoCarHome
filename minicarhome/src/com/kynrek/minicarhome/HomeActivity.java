@@ -717,7 +717,7 @@ public class HomeActivity extends Activity {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(36 * rowCount + 2);
+        return dp(36 * rowCount);
     }
 
     private void setColumns(int n) {
@@ -1075,7 +1075,7 @@ private void positionCompactMedia(
 
     int gap = dp(8);
     int minimumMediaWidth = dp(120);
-    int preferredMediaWidth = dp(120);
+    int preferredMediaWidth = dp(512);
 
     int freeWidth = rightGroup.getLeft() - icons.getRight() - 2 * gap;
 
