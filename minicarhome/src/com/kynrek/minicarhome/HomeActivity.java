@@ -1222,10 +1222,18 @@ private LinearLayout buildCompactWeather() {
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
 
-    weatherRange = text("", 11, DIM);
-    weatherRange.setSingleLine(true);
-    weatherRange.setGravity(Gravity.END);
-    weather.addView(weatherRange);
+    // Compact layout uses the second line for the current time, not the forecast range.
+    weatherRange = null;
+    boolean use24Hour = prefs.getBoolean("clock_24h", false);
+    String timeFormat = use24Hour ? "HH:mm" : "h:mm a";
+
+    TextClock compactClock = new TextClock(this);
+    compactClock.setFormat12Hour(timeFormat);
+    compactClock.setFormat24Hour(timeFormat);
+    style(compactClock, 11, TEXT);
+    compactClock.setSingleLine(true);
+    compactClock.setGravity(Gravity.END);
+    weather.addView(compactClock);
 
     return weather;
 }
@@ -1505,6 +1513,9 @@ private View buildCompactMedia() {
         wp.addView(choice("Choose", false, v -> pickWallpaper()));
         wp.addView(choice("None", !wallpaperFile().exists(), v -> removeWallpaper()));
         s.addView(wp, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
+        s.addView(toggleRow("Show app labels", "show_labels", false),
+        marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 6));
 
         s.addView(text(n >= 3 ? "Main display app" : "Main app", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         LinearLayout nav = new LinearLayout(this);
@@ -2645,12 +2656,12 @@ adapter = new BaseAdapter() {
     }
 
     private View appTile(String pkg) {
-        try {
-            return tile(appIcon(pkg), appLabel(pkg), v -> open(pkg));
-        } catch (PackageManager.NameNotFoundException e) {
-            return new View(this);
-        }
+    try {
+        return panelTile(appIcon(pkg), appLabel(pkg), v -> open(pkg));
+    } catch (PackageManager.NameNotFoundException e) {
+        return new View(this);
     }
+}
 
     private View activityTile(ComponentName cn) {
         try {
@@ -2660,13 +2671,33 @@ adapter = new BaseAdapter() {
         }
     }
 
+private boolean showPanelLabels() {
+    return prefs.getBoolean("show_labels", false);
+}
+
+private void addPanelLabel(LinearLayout tile, String name) {
+    if (showPanelLabels()) {
+        tile.addView(label(name));
+    }
+}
+
+private View panelTile(Drawable icon, String name, View.OnClickListener click) {
+    LinearLayout tile = column();
+    tile.addView(new ImageView(this),
+            new LinearLayout.LayoutParams(dp(48), dp(48)));
+    addPanelLabel(tile, name);
+    bindTile(tile, icon, name, click);
+    return tile;
+}
+
+    
     private View iconTile(String glyphText, String name, View.OnClickListener click) {
         TextView glyph = text(glyphText, 30, ACCENT);
         glyph.setGravity(Gravity.CENTER);
         glyph.setBackground(rounded(CARD, 12));
         LinearLayout t = column();
         t.addView(glyph, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        t.addView(label(name));
+        addPanelLabel(t, name);
         t.setOnClickListener(click);
         return t;
     }
@@ -2680,7 +2711,7 @@ adapter = new BaseAdapter() {
         gear.setPadding(dp(11), dp(11), dp(11), dp(11));
         LinearLayout t = column();
         t.addView(gear, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        t.addView(label("Options"));
+        addPanelLabel(t, "Options");
         t.setContentDescription("MiniCarHome settings");
         t.setOnClickListener(v -> { settingsOpen = true; editing = false; rebuildPanel(); });
         return t;
@@ -2694,12 +2725,15 @@ adapter = new BaseAdapter() {
         return t;
     }
 
-    private void bindTile(View tile, Drawable icon, String name, View.OnClickListener click) {
-        LinearLayout t = (LinearLayout) tile;
-        ((ImageView) t.getChildAt(0)).setImageDrawable(icon);
+private void bindTile(View tile, Drawable icon, String name, View.OnClickListener click) {
+    LinearLayout t = (LinearLayout) tile;
+    ((ImageView) t.getChildAt(0)).setImageDrawable(icon);
+    if (t.getChildCount() > 1 && t.getChildAt(1) instanceof TextView) {
         ((TextView) t.getChildAt(1)).setText(name);
-        t.setOnClickListener(click);
     }
+    t.setContentDescription(name);
+    t.setOnClickListener(click);
+}
 
     private TextView sectionLabel(String s) {
         TextView t = text(s, 13, DIM);
