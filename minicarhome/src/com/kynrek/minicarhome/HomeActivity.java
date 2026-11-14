@@ -717,7 +717,7 @@ public class HomeActivity extends Activity {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(36 * rowCount + 4);
+        return dp(36 * rowCount + 2);
     }
 
     private void setColumns(int n) {
@@ -939,52 +939,65 @@ public class HomeActivity extends Activity {
     List<View> userTiles = new ArrayList<>();
 
     // Fixed icons: app drawer, optional assistant, then home app.
-    icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
-            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
+        dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
+drawerParams.rightMargin = 1;
+icons.addView(iconTile("☷", "All apps", v -> showBrowser()), drawerParams);
 
-    if (prefs.getBoolean("show_mic", false)) {
-        FrameLayout micSlot = new FrameLayout(this);
-        micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(28), dp(28), Gravity.CENTER));
-        icons.addView(micSlot,
-                new LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.MATCH_PARENT));
+if (prefs.getBoolean("show_mic", false)) {
+    FrameLayout micSlot = new FrameLayout(this);
+    micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
+            dp(28), dp(28), Gravity.CENTER));
+
+    LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
+            dp(26), ViewGroup.LayoutParams.MATCH_PARENT);
+    micParams.rightMargin = 1;
+    icons.addView(micSlot, micParams);
+}
+
+View home = appTile(navApp());
+home.setOnClickListener(v -> goHome());
+LinearLayout.LayoutParams homeParams = new LinearLayout.LayoutParams(
+        dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
+homeParams.rightMargin = 1;
+icons.addView(home, homeParams);
+
+// User shortcuts follow the fixed icons.
+List<String> list = shortcuts();
+for (String entry : list) {
+    if (navApp().equals(entry.split("/")[0])) continue;
+
+    View tile = null;
+    if (isWazeEntry(entry)) {
+        tile = wazeTile(entry);
+    } else if (entry.contains("/")) {
+        tile = activityTile(ComponentName.unflattenFromString(entry));
+    } else if (pm.getLaunchIntentForPackage(entry) != null) {
+        tile = appTile(entry);
     }
 
-    View home = appTile(navApp());
-    home.setOnClickListener(v -> goHome());
-    icons.addView(home,
-            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+    if (tile != null) {
+        if (editing) tile = editable(tile, userTiles.size(), list.size());
+        userTiles.add(tile);
 
-    // User shortcuts follow the fixed icons.
-    List<String> list = shortcuts();
-    for (String entry : list) {
-        if (navApp().equals(entry.split("/")[0])) continue;
-
-        View tile = null;
-        if (isWazeEntry(entry)) {
-            tile = wazeTile(entry);
-        } else if (entry.contains("/")) {
-            tile = activityTile(ComponentName.unflattenFromString(entry));
-        } else if (pm.getLaunchIntentForPackage(entry) != null) {
-            tile = appTile(entry);
-        }
-
-        if (tile != null) {
-            if (editing) tile = editable(tile, userTiles.size(), list.size());
-            userTiles.add(tile);
-            icons.addView(tile, new LinearLayout.LayoutParams(
-                    dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
-        }
+        LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(
+                dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
+        tileParams.rightMargin = 1;
+        icons.addView(tile, tileParams);
     }
+}
 
-    if (editing) {
-        icons.addView(iconTile("+", "Add", v -> showPicker()),
-                new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
-        icons.addView(iconTile("✓", "Done", v -> {
-            editing = false;
-            rebuildPanel();
-        }), new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
-    }
+if (editing) {
+    LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(
+            dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
+    addParams.rightMargin = 1;
+    icons.addView(iconTile("+", "Add", v -> showPicker()), addParams);
+
+    icons.addView(iconTile("✓", "Done", v -> {
+        editing = false;
+        rebuildPanel();
+    }), new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+}
 
     // Right-side indicators and weather.
     LinearLayout rightGroup = new LinearLayout(this);
