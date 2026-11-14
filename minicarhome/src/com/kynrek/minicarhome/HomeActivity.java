@@ -956,10 +956,10 @@ icons.addView(drawerTile, drawerParams);
 if (prefs.getBoolean("show_mic", false)) {
     FrameLayout micSlot = new FrameLayout(this);
     micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-            dp(26), dp(26), Gravity.CENTER));
+            dp(36), dp(36), Gravity.CENTER));
 
     LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
-            dp(26), ViewGroup.LayoutParams.MATCH_PARENT);
+            dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
     micParams.rightMargin = dp(2);
     micParams.topMargin = dp(4);
     icons.addView(micSlot, micParams);
