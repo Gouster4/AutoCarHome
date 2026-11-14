@@ -721,7 +721,7 @@ private final Runnable restoreCompactMediaControls = () -> {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(36 * rowCount);
+        return dp(36 * rowCount + dp(4));
     }
 
     private void setColumns(int n) {
@@ -1097,10 +1097,10 @@ private void positionCompactMedia(
                 mediaArtist.getPaint().measureText(mediaArtist.getText().toString()));
 
         // Album art + media padding + track-info padding + text width.
-        desiredWidth = dp(26 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
+        desiredWidth = dp(24 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
     } else {
         // Album art + horizontal padding + three compact playback buttons.
-        desiredWidth = dp(26 + 12 + 3 * 28);
+        desiredWidth = dp(24 + 12 + 3 * 28);
     }
 
     int mediaWidth = Math.min(desiredWidth, maxWidth);
@@ -1258,7 +1258,7 @@ private LinearLayout buildCompactWeather() {
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
     weather.setPadding(dp(8), 0, dp(4), 0);
 
-    weatherTemp = text("", 6, TEXT);
+    weatherTemp = text("", 7, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
