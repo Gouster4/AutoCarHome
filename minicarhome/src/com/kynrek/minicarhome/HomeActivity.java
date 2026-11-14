@@ -2895,7 +2895,8 @@ private void bindTile(View tile, Drawable icon, String name, View.OnClickListene
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setGravity(Gravity.CENTER_HORIZONTAL);
-        t.setPadding(0, dp(4), 0, dp(4));
+        int padV = isCompactPanel() ? 0 : dp(4);
+        t.setPadding(0, padV, 0, padV);
         return t;
     }
 
