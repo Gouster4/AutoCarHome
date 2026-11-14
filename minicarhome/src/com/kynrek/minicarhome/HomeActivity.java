@@ -1233,7 +1233,7 @@ private LinearLayout buildCompactWeather() {
 private View buildCompactMedia() {
     LinearLayout media = new LinearLayout(this);
     media.setOrientation(LinearLayout.HORIZONTAL);
-    media.setGravity(Gravity.CENTER);
+    media.setGravity(Gravity.CENTER_VERTICAL);
     media.setPadding(dp(6), dp(2), dp(6), dp(2));
 
     mediaArt = new ImageView(this);
@@ -1242,42 +1242,63 @@ private View buildCompactMedia() {
     mediaArt.setClipToOutline(true);
     media.addView(mediaArt, new LinearLayout.LayoutParams(dp(36), dp(36)));
 
-    LinearLayout info = new LinearLayout(this);
-    info.setOrientation(LinearLayout.VERTICAL);
-    info.setGravity(Gravity.CENTER_VERTICAL);
-    info.setPadding(dp(6), 0, dp(4), 0);
+    FrameLayout content = new FrameLayout(this);
+    media.addView(content, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
-    mediaTitle = text("Nothing playing", 12, TEXT);
-    mediaTitle.setSingleLine(true);
-    mediaTitle.setEllipsize(TextUtils.TruncateAt.END);
-    info.addView(mediaTitle);
-
-    mediaArtist = text("", 10, DIM);
-    mediaArtist.setSingleLine(true);
-    mediaArtist.setEllipsize(TextUtils.TruncateAt.END);
-    info.addView(mediaArtist);
-
-    media.addView(info, new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+    // Normal display: previous, play/pause, next.
+    LinearLayout controls = new LinearLayout(this);
+    controls.setOrientation(LinearLayout.HORIZONTAL);
+    controls.setGravity(Gravity.CENTER);
 
     TextView previous = mediaButton("|◀", false, true);
     previous.setContentDescription("Previous track");
     previous.setOnClickListener(v -> {
         if (controller != null) controller.getTransportControls().skipToPrevious();
     });
-    media.addView(previous);
+    controls.addView(previous);
 
     playButton = mediaButton("▶", false, true);
     playButton.setContentDescription("Play or pause");
     playButton.setOnClickListener(v -> togglePlay());
-    media.addView(playButton);
+    controls.addView(playButton);
 
     TextView next = mediaButton("▶|", false, true);
     next.setContentDescription("Next track");
     next.setOnClickListener(v -> {
         if (controller != null) controller.getTransportControls().skipToNext();
     });
-    media.addView(next);
+    controls.addView(next);
+
+    content.addView(controls, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER));
+    compactMediaControls = controls;
+
+    // Shown briefly after track metadata changes.
+    LinearLayout trackInfo = new LinearLayout(this);
+    trackInfo.setOrientation(LinearLayout.VERTICAL);
+    trackInfo.setGravity(Gravity.CENTER_VERTICAL);
+    trackInfo.setPadding(dp(8), 0, dp(4), 0);
+
+    mediaTitle = text("Nothing playing", 12, TEXT);
+    mediaTitle.setSingleLine(true);
+    mediaTitle.setEllipsize(TextUtils.TruncateAt.END);
+    trackInfo.addView(mediaTitle);
+
+    mediaArtist = text("", 10, DIM);
+    mediaArtist.setSingleLine(true);
+    mediaArtist.setEllipsize(TextUtils.TruncateAt.END);
+    trackInfo.addView(mediaArtist);
+
+    FrameLayout.LayoutParams infoParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER);
+    content.addView(trackInfo, infoParams);
+    trackInfo.setVisibility(View.GONE);
+    compactTrackInfo = trackInfo;
 
     progressRow = null;
     mediaProgress = null;
