@@ -723,7 +723,7 @@ private final Runnable restoreCompactMediaControls = () -> {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(36 * rowCount + dp(8));
+        return dp(36 * rowCount + 8);
     }
 
     private void setColumns(int n) {
