@@ -1258,7 +1258,7 @@ private LinearLayout buildCompactWeather() {
     LinearLayout weather = new LinearLayout(this);
     weather.setOrientation(LinearLayout.VERTICAL);
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
-    weather.setPadding(dp(8), 0, dp(4), 0);
+    weather.setPadding(dp(8), 0, dp(4), dp(4));
 
     weatherTemp = text("", 7, TEXT);
     weatherTemp.setSingleLine(true);
