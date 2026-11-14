@@ -941,17 +941,18 @@ public class HomeActivity extends Activity {
     // Fixed icons: app drawer, optional assistant, then home app.
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-drawerParams.rightMargin = 2;
+drawerParams.rightMargin = dp(1);
 icons.addView(iconTile("☷", "All apps", v -> showBrowser()), drawerParams);
 
 if (prefs.getBoolean("show_mic", false)) {
     FrameLayout micSlot = new FrameLayout(this);
     micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-            dp(24), dp(24), Gravity.CENTER));
+            dp(26), dp(26), Gravity.CENTER));
 
     LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
-            dp(24), ViewGroup.LayoutParams.MATCH_PARENT);
-    micParams.rightMargin = 1;
+            dp(26), ViewGroup.LayoutParams.MATCH_PARENT);
+    micParams.rightMargin = dp(1);
+    micParams.topMargin = dp(1);
     icons.addView(micSlot, micParams);
 }
 
@@ -959,7 +960,7 @@ View home = appTile(navApp());
 home.setOnClickListener(v -> goHome());
 LinearLayout.LayoutParams homeParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-homeParams.rightMargin = 1;
+homeParams.rightMargin = dp(1);
 icons.addView(home, homeParams);
 
 // User shortcuts follow the fixed icons.
@@ -982,7 +983,7 @@ for (String entry : list) {
 
         LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(
                 dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-        tileParams.rightMargin = 1;
+        tileParams.rightMargin = dp(1);
         icons.addView(tile, tileParams);
     }
 }
@@ -990,7 +991,7 @@ for (String entry : list) {
 if (editing) {
     LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(
             dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-    addParams.rightMargin = 1;
+    addParams.rightMargin = dp(1);
     icons.addView(iconTile("+", "Add", v -> showPicker()), addParams);
 
     icons.addView(iconTile("✓", "Done", v -> {
@@ -1073,8 +1074,8 @@ private void positionCompactMedia(
     }
 
     int gap = dp(8);
-    int minimumMediaWidth = dp(170);
-    int preferredMediaWidth = dp(170);
+    int minimumMediaWidth = dp(120);
+    int preferredMediaWidth = dp(120);
 
     int freeWidth = rightGroup.getLeft() - icons.getRight() - 2 * gap;
 
@@ -1234,7 +1235,7 @@ private LinearLayout buildCompactWeather() {
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
     weather.setPadding(dp(8), 0, dp(4), 0);
 
-    weatherTemp = text("", 10, TEXT);
+    weatherTemp = text("", 8, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
@@ -1247,7 +1248,7 @@ private LinearLayout buildCompactWeather() {
     TextClock compactClock = new TextClock(this);
     compactClock.setFormat12Hour(timeFormat);
     compactClock.setFormat24Hour(timeFormat);
-    style(compactClock, 8, TEXT);
+    style(compactClock, 10, TEXT);
     compactClock.setSingleLine(true);
     compactClock.setGravity(Gravity.END);
     weather.addView(compactClock);
@@ -1265,7 +1266,7 @@ private View buildCompactMedia() {
     mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
     mediaArt.setBackground(rounded(0xFF26323A, 8));
     mediaArt.setClipToOutline(true);
-    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(24), dp(24)));
+    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(26), dp(26)));
 
     FrameLayout content = new FrameLayout(this);
     media.addView(content, new LinearLayout.LayoutParams(
