@@ -723,7 +723,7 @@ private final Runnable restoreCompactMediaControls = () -> {
 
     private int panelHeight() {
         int rowCount = Math.max(1, Math.min(MAX_COLUMNS, columns));
-        return dp(36 * rowCount + dp(4));
+        return dp(36 * rowCount + dp(8));
     }
 
     private void setColumns(int n) {
@@ -936,7 +936,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     private View buildCompactBar() {
     FrameLayout bar = new FrameLayout(this);
     bar.setBackgroundColor(BG);
-    bar.setPadding(dp(0), dp(0), dp(0), dp(0));
+    bar.setPadding(dp(4), dp(4), dp(4), dp(4));
 
     LinearLayout icons = new LinearLayout(this);
     icons.setOrientation(LinearLayout.HORIZONTAL);
