@@ -2264,7 +2264,7 @@ private View buildCompactMedia() {
             grid.setNumColumns(GridView.AUTO_FIT);
             grid.setColumnWidth(dp(96));
             grid.setVerticalSpacing(dp(8));
-            adapter = new BaseAdapter() {
+adapter = new BaseAdapter() {
     private final int extraItems = pick == PICK_NONE ? 1 : 0;
 
     @Override public int getCount() {
@@ -2279,14 +2279,17 @@ private View buildCompactMedia() {
         return i;
     }
 
+    @Override public int getViewTypeCount() {
+        return 2;
+    }
+
+    @Override public int getItemViewType(int i) {
+        return extraItems == 1 && i == 0 ? 0 : 1;
+    }
+
     @Override public View getView(int i, View convert, ViewGroup parent) {
         if (extraItems == 1 && i == 0) {
-            return iconTile("⚙", "Options", v -> {
-                hideBrowser();
-                settingsOpen = true;
-                editing = false;
-                rebuildPanel();
-            });
+            return optionsTile();
         }
 
         App a = shown.get(i - extraItems);
