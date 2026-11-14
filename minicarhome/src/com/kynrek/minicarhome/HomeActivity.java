@@ -1284,7 +1284,7 @@ private View buildCompactMedia() {
     media.setOrientation(LinearLayout.HORIZONTAL);
     media.setGravity(Gravity.CENTER_VERTICAL);
     media.setPadding(dp(6), dp(2), dp(6), dp(2));
-    media.setBackground(rounded(0x24FFFFFF, 14));
+    media.setBackground(rounded(0x24FFFFFF, dp(8)));
 
     mediaArt = new ImageView(this);
     mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
