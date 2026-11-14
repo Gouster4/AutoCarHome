@@ -945,7 +945,7 @@ public class HomeActivity extends Activity {
     if (prefs.getBoolean("show_mic", false)) {
         FrameLayout micSlot = new FrameLayout(this);
         micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(26), dp(26), Gravity.CENTER));
+                dp(28), dp(28), Gravity.CENTER));
         icons.addView(micSlot,
                 new LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -1252,7 +1252,7 @@ private View buildCompactMedia() {
     mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
     mediaArt.setBackground(rounded(0xFF26323A, 8));
     mediaArt.setClipToOutline(true);
-    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(32), dp(32)));
+    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(28), dp(28)));
 
     FrameLayout content = new FrameLayout(this);
     media.addView(content, new LinearLayout.LayoutParams(
