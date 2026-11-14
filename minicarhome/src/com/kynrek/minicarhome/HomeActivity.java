@@ -167,17 +167,20 @@ public class HomeActivity extends Activity {
     private PlaybackState playback;
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
     @Override
-    public void onMetadataChanged(MediaMetadata m) {
-        metadata = m;
-        showMedia();
+public void onMetadataChanged(MediaMetadata m) {
+    metadata = m;
+    showMedia();
 
-        if (compactMediaControls != null && compactTrackInfo != null) {
-            main.removeCallbacks(restoreCompactMediaControls);
-            compactMediaControls.setVisibility(View.GONE);
-            compactTrackInfo.setVisibility(View.VISIBLE);
-            main.postDelayed(restoreCompactMediaControls, 3000);
+    if (compactMediaControls != null && compactTrackInfo != null) {
+        main.removeCallbacks(restoreCompactMediaControls);
+        compactMediaControls.setVisibility(View.GONE);
+        compactTrackInfo.setVisibility(View.VISIBLE);
+        if (repositionCompactMedia != null) {
+            main.post(repositionCompactMedia);
         }
+        main.postDelayed(restoreCompactMediaControls, 3000);
     }
+}
 
     @Override
     public void onPlaybackStateChanged(PlaybackState s) {
@@ -201,10 +204,11 @@ public class HomeActivity extends Activity {
     private final MediaSessionManager.OnActiveSessionsChangedListener sessionsListener = list -> pickController();
     private View compactMediaControls;
     private View compactTrackInfo;
-    private final Runnable restoreCompactMediaControls = () -> {
-        if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
-        if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
-    };
+private final Runnable restoreCompactMediaControls = () -> {
+    if (compactMediaControls != null) compactMediaControls.setVisibility(View.VISIBLE);
+    if (compactTrackInfo != null) compactTrackInfo.setVisibility(View.GONE);
+    if (repositionCompactMedia != null) repositionCompactMedia.run();
+};
 
     
     @Override
@@ -936,7 +940,8 @@ public class HomeActivity extends Activity {
     icons.setOrientation(LinearLayout.HORIZONTAL);
     icons.setGravity(Gravity.CENTER_VERTICAL);
 
-    List<View> userTiles = new ArrayList<>();
+List<View> userTiles = new ArrayList<>();
+List<View> compactIcons = new ArrayList<>();
 
     // Fixed icons: app drawer, optional assistant, then home app.
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
@@ -954,6 +959,7 @@ if (prefs.getBoolean("show_mic", false)) {
     micParams.rightMargin = dp(2);
     micParams.topMargin = dp(4);
     icons.addView(micSlot, micParams);
+    compactIcons.add(micSlot);
 }
 
 View home = appTile(navApp());
@@ -962,6 +968,7 @@ LinearLayout.LayoutParams homeParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
 homeParams.rightMargin = dp(2);
 icons.addView(home, homeParams);
+compactIcons.add(home);
 
 // User shortcuts follow the fixed icons.
 List<String> list = shortcuts();
@@ -980,6 +987,7 @@ for (String entry : list) {
     if (tile != null) {
         if (editing) tile = editable(tile, userTiles.size(), list.size());
         userTiles.add(tile);
+        compactIcons.add(tile);
 
         LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(
                 dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
@@ -989,15 +997,20 @@ for (String entry : list) {
 }
 
 if (editing) {
+    View add = iconTile("+", "Add", v -> showPicker());
     LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(
             dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
     addParams.rightMargin = dp(2);
-    icons.addView(iconTile("+", "Add", v -> showPicker()), addParams);
+    icons.addView(add, addParams);
+    compactIcons.add(add);
 
-    icons.addView(iconTile("✓", "Done", v -> {
+    View done = iconTile("✓", "Done", v -> {
         editing = false;
         rebuildPanel();
-    }), new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+    });
+    icons.addView(done, new LinearLayout.LayoutParams(
+            dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+    compactIcons.add(done);
 }
 
     // Right-side indicators and weather.
@@ -1059,60 +1072,70 @@ if (editing) {
     return bar;
 }
 
+private Runnable repositionCompactMedia;
+    
 private void positionCompactMedia(
         FrameLayout bar,
-        LinearLayout icons,
-        LinearLayout rightGroup,
         View mediaSlot,
-        List<View> userTiles) {
+        List<View> compactIcons) {
 
-    if (mediaSlot.getVisibility() != View.VISIBLE
-            || bar.getWidth() == 0
-            || icons.getWidth() == 0
-            || rightGroup.getWidth() == 0) {
-        return;
-    }
+    if (mediaSlot.getVisibility() == View.GONE || bar.getWidth() == 0) return;
 
-    int gap = dp(8);
-    int minimumMediaWidth = dp(120);
-    int preferredMediaWidth = dp(512);
-
-    int freeWidth = rightGroup.getLeft() - icons.getRight() - 2 * gap;
-
-    // Drop trailing user shortcuts until there is room for the minimum media
-    // width. The drawer, assistant and home app are never in userTiles.
-    if (freeWidth < minimumMediaWidth && !userTiles.isEmpty()) {
-        View lastTile = userTiles.remove(userTiles.size() - 1);
-        icons.removeView(lastTile);
-        bar.post(() ->
-                positionCompactMedia(bar, icons, rightGroup, mediaSlot, userTiles));
-        return;
-    }
-
-    if (freeWidth < minimumMediaWidth) {
+    int maxWidth = bar.getWidth() - 2 * dp(64);
+    if (maxWidth <= 0) {
         mediaSlot.setVisibility(View.INVISIBLE);
         return;
     }
 
-    mediaSlot.setVisibility(View.VISIBLE);
+    int desiredWidth;
+    boolean showingTrackInfo = compactTrackInfo != null
+            && compactTrackInfo.getVisibility() == View.VISIBLE;
 
-    int mediaWidth = Math.min(preferredMediaWidth, freeWidth);
+    if (showingTrackInfo && mediaTitle != null && mediaArtist != null) {
+        float textWidth = Math.max(
+                mediaTitle.getPaint().measureText(mediaTitle.getText().toString()),
+                mediaArtist.getPaint().measureText(mediaArtist.getText().toString()));
+
+        // Album art + media padding + track-info padding + text width.
+        desiredWidth = dp(26 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
+    } else {
+        // Album art + horizontal padding + three compact playback buttons.
+        desiredWidth = dp(26 + 12 + 3 * 28);
+    }
+
+    int mediaWidth = Math.min(desiredWidth, maxWidth);
     FrameLayout.LayoutParams params =
             (FrameLayout.LayoutParams) mediaSlot.getLayoutParams();
 
-    if (params.width != mediaWidth) {
-        params.width = mediaWidth;
-        mediaSlot.setLayoutParams(params);
-        return; // Reposition after the new width has been laid out.
+    mediaSlot.setVisibility(View.VISIBLE);
+    params.width = mediaWidth;
+    params.gravity = Gravity.CENTER;
+    mediaSlot.setTranslationX(0);
+    mediaSlot.setLayoutParams(params);
+
+    // Wait for FrameLayout to apply a changed width before testing overlaps.
+    if (mediaSlot.getWidth() != mediaWidth) {
+        bar.post(() -> positionCompactMedia(bar, mediaSlot, compactIcons));
+        return;
     }
 
-    int minLeft = icons.getRight() + gap;
-    int maxLeft = rightGroup.getLeft() - gap - mediaWidth;
-    int centeredLeft = (bar.getWidth() - mediaWidth) / 2;
+    int mediaLeft = mediaSlot.getLeft();
+    int mediaRight = mediaLeft + mediaSlot.getWidth();
 
-    // Keep media centered unless that would collide with either group.
-    int mediaLeft = Math.max(minLeft, Math.min(centeredLeft, maxLeft));
-    mediaSlot.setTranslationX(mediaLeft - mediaSlot.getLeft());
+    int[] barLocation = new int[2];
+    bar.getLocationOnScreen(barLocation);
+
+    for (View icon : compactIcons) {
+        if (icon.getParent() == null) continue;
+
+        int[] iconLocation = new int[2];
+        icon.getLocationOnScreen(iconLocation);
+        int iconLeft = iconLocation[0] - barLocation[0];
+        int iconRight = iconLeft + icon.getWidth();
+
+        boolean overlaps = iconRight > mediaLeft && iconLeft < mediaRight;
+        icon.setVisibility(overlaps ? View.INVISIBLE : View.VISIBLE);
+    }
 }
     
     private View buildSidePanel() {
@@ -1235,7 +1258,7 @@ private LinearLayout buildCompactWeather() {
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
     weather.setPadding(dp(8), 0, dp(4), 0);
 
-    weatherTemp = text("", 8, TEXT);
+    weatherTemp = text("", 6, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
@@ -1248,7 +1271,7 @@ private LinearLayout buildCompactWeather() {
     TextClock compactClock = new TextClock(this);
     compactClock.setFormat12Hour(timeFormat);
     compactClock.setFormat24Hour(timeFormat);
-    style(compactClock, 10, TEXT);
+    style(compactClock, 8, TEXT);
     compactClock.setSingleLine(true);
     compactClock.setGravity(Gravity.END);
     weather.addView(compactClock);
