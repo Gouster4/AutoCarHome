@@ -1731,25 +1731,11 @@ private View buildCompactMedia() {
 
     private View editable(View tile, int index, int count) {
         tile.setOnClickListener(null);
-        boolean compact = isCompactPanel();
+        LinearLayout box = column();
+        box.addView(tile);
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
-        if (compact) {
-            // Compact panel: overlay the buttons on the icon itself.
-            FrameLayout box = new FrameLayout(this);
-            box.addView(tile, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            bar.setBackground(rounded(0xB3000000, 6));
-            bar.addView(editButton("◀", index > 0, v -> moveShortcut(index, -1)), overlayButtonParams());
-            bar.addView(editButton("✕", true, v -> removeShortcut(index)), overlayButtonParams());
-            bar.addView(editButton("▶", index < count - 1, v -> moveShortcut(index, 1)), overlayButtonParams());
-            box.addView(bar, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-            return box;
-        }
-        LinearLayout box = column();
-        box.addView(tile);
         bar.addView(editButton("◀", index > 0, v -> moveShortcut(index, -1)));
         bar.addView(editButton("✕", true, v -> removeShortcut(index)));
         bar.addView(editButton("▶", index < count - 1, v -> moveShortcut(index, 1)));
@@ -1757,16 +1743,11 @@ private View buildCompactMedia() {
         return box;
     }
 
-    private LinearLayout.LayoutParams overlayButtonParams() {
-        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-    }
-
     private TextView editButton(String glyph, boolean enabled, View.OnClickListener click) {
-        boolean compact = isCompactPanel();
-        TextView b = text(glyph, compact ? 11 : 13, enabled ? ACCENT : 0xFF3A474D);
+        TextView b = text(glyph, 13, enabled ? ACCENT : 0xFF3A474D);
         b.setGravity(Gravity.CENTER);
-        if (!compact) b.setMinWidth(dp(24));
-        b.setPadding(0, dp(compact ? 6 : 4), 0, dp(compact ? 6 : 4));
+        b.setMinWidth(dp(24));
+        b.setPadding(0, dp(4), 0, dp(4));
         if (enabled) b.setOnClickListener(click);
         return b;
     }
@@ -2769,16 +2750,13 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
             @Override protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
                 float w = getWidth(), h = getHeight();
-                float side = Math.min(w, h) * 0.64f;
+                float side = Math.min(w, h) * 0.46f;
                 float cell = side / 3f;
-                float size = cell * 0.62f;          // dot size: bigger, with wider gaps
-                float corner = size * 0.32f;        // between square (0) and circle (0.5)
+                float r = cell * 0.36f;
                 float x0 = (w - side) / 2f, y0 = (h - side) / 2f;
                 for (int row = 0; row < 3; row++) {
                     for (int col = 0; col < 3; col++) {
-                        float cx = x0 + cell * (col + 0.5f), cy = y0 + cell * (row + 0.5f);
-                        canvas.drawRoundRect(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f,
-                                corner, corner, dotPaint);
+                        canvas.drawCircle(x0 + cell * (col + 0.5f), y0 + cell * (row + 0.5f), r, dotPaint);
                     }
                 }
             }
