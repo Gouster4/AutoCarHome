@@ -940,14 +940,14 @@ public class HomeActivity extends Activity {
 
     // Fixed icons: app drawer, optional assistant, then home app.
     icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
-            new LinearLayout.LayoutParams(dp(32), ViewGroup.LayoutParams.MATCH_PARENT));
+            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
 
     if (prefs.getBoolean("show_mic", false)) {
         FrameLayout micSlot = new FrameLayout(this);
         micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(26), dp(26), Gravity.CENTER));
+                dp(24), dp(24), Gravity.CENTER));
         icons.addView(micSlot,
-                new LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     View home = appTile(navApp());
@@ -1252,7 +1252,7 @@ private View buildCompactMedia() {
     mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
     mediaArt.setBackground(rounded(0xFF26323A, 8));
     mediaArt.setClipToOutline(true);
-    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(36), dp(36)));
+    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(24), dp(24)));
 
     FrameLayout content = new FrameLayout(this);
     media.addView(content, new LinearLayout.LayoutParams(
@@ -2768,15 +2768,16 @@ private void bindTile(View tile, Drawable icon, String name, View.OnClickListene
         return l;
     }
 
-    private TextView mediaButton(String s, boolean wide, boolean five) {
-        TextView b = text(s, five ? (wide ? 20 : 16) : (wide ? 24 : 22), TEXT);
-        b.setGravity(Gravity.CENTER);
-        b.setSingleLine(true);
-        b.setMinWidth(dp(five ? (wide ? 44 : 38) : (wide ? 56 : 50)));
-        b.setMinHeight(dp(34));
-        b.setPadding(0, dp(2), 0, dp(2));
-        return b;
-    }
+private TextView mediaButton(String s, boolean wide, boolean five) {
+    boolean compact = isCompactPanel();
+    TextView b = text(s, compact ? 14 : (five ? (wide ? 20 : 16) : (wide ? 24 : 22)), TEXT);
+    b.setGravity(Gravity.CENTER);
+    b.setSingleLine(true);
+    b.setMinWidth(dp(compact ? 28 : (five ? (wide ? 44 : 38) : (wide ? 56 : 50))));
+    b.setMinHeight(dp(compact ? 26 : 34));
+    b.setPadding(0, dp(2), 0, dp(2));
+    return b;
+}
 
     private TextView control(String s) {
         TextView b = text(s, 18, TEXT);
