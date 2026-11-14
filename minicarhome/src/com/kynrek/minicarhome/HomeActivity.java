@@ -940,14 +940,14 @@ public class HomeActivity extends Activity {
 
     // Fixed icons: app drawer, optional assistant, then home app.
     icons.addView(iconTile("☷", "All apps", v -> showBrowser()),
-            new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+            new LinearLayout.LayoutParams(dp(32), ViewGroup.LayoutParams.MATCH_PARENT));
 
     if (prefs.getBoolean("show_mic", false)) {
         FrameLayout micSlot = new FrameLayout(this);
         micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(
-                dp(36), dp(36), Gravity.CENTER));
+                dp(26), dp(26), Gravity.CENTER));
         icons.addView(micSlot,
-                new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     View home = appTile(navApp());
