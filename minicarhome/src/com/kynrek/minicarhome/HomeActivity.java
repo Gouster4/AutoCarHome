@@ -936,7 +936,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     private View buildCompactBar() {
     FrameLayout bar = new FrameLayout(this);
     bar.setBackgroundColor(BG);
-    bar.setPadding(dp(8), dp(4), dp(8), dp(4));
+    bar.setPadding(dp(8), dp(0), dp(8), dp(0));
 
     LinearLayout icons = new LinearLayout(this);
     icons.setOrientation(LinearLayout.HORIZONTAL);
@@ -1299,9 +1299,9 @@ private LinearLayout buildCompactWeather() {
     LinearLayout weather = new LinearLayout(this);
     weather.setOrientation(LinearLayout.VERTICAL);
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
-    weather.setPadding(dp(8), 0, dp(4), 0);
+    weather.setPadding(dp(8), 0, 0, 0);
 
-    weatherTemp = text("", 8, TEXT);
+    weatherTemp = text("", 9, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
@@ -1314,7 +1314,7 @@ private LinearLayout buildCompactWeather() {
     TextClock compactClock = new TextClock(this);
     compactClock.setFormat12Hour(timeFormat);
     compactClock.setFormat24Hour(timeFormat);
-    style(compactClock, 9, TEXT);
+    style(compactClock, 10, TEXT);
     compactClock.setSingleLine(true);
     compactClock.setGravity(Gravity.END);
     weather.addView(compactClock);
