@@ -1668,7 +1668,6 @@ private View buildCompactMedia() {
             tiles.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
         } else {
             tiles.add(iconTile("☷", "All apps", v -> showBrowser()));
-            tiles.add(optionsTile());
         }
         return rows(tiles, n);
     }
@@ -2266,19 +2265,43 @@ private View buildCompactMedia() {
             grid.setColumnWidth(dp(96));
             grid.setVerticalSpacing(dp(8));
             adapter = new BaseAdapter() {
-                @Override public int getCount() { return shown.size(); }
-                @Override public Object getItem(int i) { return shown.get(i); }
-                @Override public long getItemId(int i) { return i; }
-                @Override public View getView(int i, View convert, ViewGroup parent) {
-                    App a = shown.get(i);
-                    Drawable icon;
-                    try { icon = activityIcon(a.cn); }
-                    catch (PackageManager.NameNotFoundException e) { icon = pm.getDefaultActivityIcon(); }
-                    View t = convert != null ? convert : tile(null, "", null);
-                    bindTile(t, icon, a.label, v -> choose(a.cn));
-                    return t;
-                }
-            };
+    private final int extraItems = pick == PICK_NONE ? 1 : 0;
+
+    @Override public int getCount() {
+        return shown.size() + extraItems;
+    }
+
+    @Override public Object getItem(int i) {
+        return i < extraItems ? null : shown.get(i - extraItems);
+    }
+
+    @Override public long getItemId(int i) {
+        return i;
+    }
+
+    @Override public View getView(int i, View convert, ViewGroup parent) {
+        if (extraItems == 1 && i == 0) {
+            return iconTile("⚙", "Options", v -> {
+                hideBrowser();
+                settingsOpen = true;
+                editing = false;
+                rebuildPanel();
+            });
+        }
+
+        App a = shown.get(i - extraItems);
+        Drawable icon;
+        try {
+            icon = activityIcon(a.cn);
+        } catch (PackageManager.NameNotFoundException e) {
+            icon = pm.getDefaultActivityIcon();
+        }
+
+        View t = convert != null ? convert : tile(null, "", null);
+        bindTile(t, icon, a.label, v -> choose(a.cn));
+        return t;
+    }
+};
             grid.setAdapter(adapter);
             box.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
