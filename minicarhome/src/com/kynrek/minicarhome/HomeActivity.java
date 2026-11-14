@@ -941,7 +941,7 @@ public class HomeActivity extends Activity {
     // Fixed icons: app drawer, optional assistant, then home app.
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-drawerParams.rightMargin = dp(1);
+drawerParams.rightMargin = dp(2);
 icons.addView(iconTile("☷", "All apps", v -> showBrowser()), drawerParams);
 
 if (prefs.getBoolean("show_mic", false)) {
@@ -951,8 +951,8 @@ if (prefs.getBoolean("show_mic", false)) {
 
     LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
             dp(26), ViewGroup.LayoutParams.MATCH_PARENT);
-    micParams.rightMargin = dp(1);
-    micParams.topMargin = dp(1);
+    micParams.rightMargin = dp(2);
+    micParams.topMargin = dp(4);
     icons.addView(micSlot, micParams);
 }
 
@@ -960,7 +960,7 @@ View home = appTile(navApp());
 home.setOnClickListener(v -> goHome());
 LinearLayout.LayoutParams homeParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-homeParams.rightMargin = dp(1);
+homeParams.rightMargin = dp(2);
 icons.addView(home, homeParams);
 
 // User shortcuts follow the fixed icons.
@@ -983,7 +983,7 @@ for (String entry : list) {
 
         LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(
                 dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-        tileParams.rightMargin = dp(1);
+        tileParams.rightMargin = dp(2);
         icons.addView(tile, tileParams);
     }
 }
@@ -991,7 +991,7 @@ for (String entry : list) {
 if (editing) {
     LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(
             dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
-    addParams.rightMargin = dp(1);
+    addParams.rightMargin = dp(2);
     icons.addView(iconTile("+", "Add", v -> showPicker()), addParams);
 
     icons.addView(iconTile("✓", "Done", v -> {
