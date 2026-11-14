@@ -941,6 +941,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     LinearLayout icons = new LinearLayout(this);
     icons.setOrientation(LinearLayout.HORIZONTAL);
     icons.setGravity(Gravity.CENTER_VERTICAL);
+    icons..setPadding(0, dp(-4), 0, 0);
 
 List<View> userTiles = new ArrayList<>();
 List<View> compactIcons = new ArrayList<>();
