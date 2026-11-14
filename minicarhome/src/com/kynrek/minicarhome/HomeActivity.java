@@ -1074,7 +1074,7 @@ private void positionCompactMedia(
 
     int gap = dp(8);
     int minimumMediaWidth = dp(170);
-    int preferredMediaWidth = dp(240);
+    int preferredMediaWidth = dp(170);
 
     int freeWidth = rightGroup.getLeft() - icons.getRight() - 2 * gap;
 
@@ -1234,7 +1234,7 @@ private LinearLayout buildCompactWeather() {
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
     weather.setPadding(dp(8), 0, dp(4), 0);
 
-    weatherTemp = text("", 14, TEXT);
+    weatherTemp = text("", 10, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
@@ -1247,7 +1247,7 @@ private LinearLayout buildCompactWeather() {
     TextClock compactClock = new TextClock(this);
     compactClock.setFormat12Hour(timeFormat);
     compactClock.setFormat24Hour(timeFormat);
-    style(compactClock, 11, TEXT);
+    style(compactClock, 8, TEXT);
     compactClock.setSingleLine(true);
     compactClock.setGravity(Gravity.END);
     weather.addView(compactClock);
@@ -1265,7 +1265,7 @@ private View buildCompactMedia() {
     mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
     mediaArt.setBackground(rounded(0xFF26323A, 8));
     mediaArt.setClipToOutline(true);
-    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(28), dp(28)));
+    media.addView(mediaArt, new LinearLayout.LayoutParams(dp(24), dp(24)));
 
     FrameLayout content = new FrameLayout(this);
     media.addView(content, new LinearLayout.LayoutParams(
