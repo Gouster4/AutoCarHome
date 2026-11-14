@@ -949,7 +949,8 @@ List<View> compactIcons = new ArrayList<>();
 LinearLayout.LayoutParams drawerParams = new LinearLayout.LayoutParams(
         dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
 drawerParams.rightMargin = dp(2);
-icons.addView(appsGridTile("All apps", v -> showBrowser()), drawerParams);
+final View drawerTile = appsGridTile("All apps", v -> showBrowser());
+icons.addView(drawerTile, drawerParams);
 
 if (prefs.getBoolean("show_mic", false)) {
     FrameLayout micSlot = new FrameLayout(this);
@@ -1064,11 +1065,23 @@ if (editing) {
     bar.addView(mediaSlot, mediaParams);
 
     repositionCompactMedia = () ->
-            positionCompactMedia(bar, mediaSlot, compactIcons);
+            positionCompactMedia(bar, mediaSlot, drawerTile, rightGroup, compactIcons);
 
-    bar.addOnLayoutChangeListener((v, left, top, right, bottom,
-                                   oldLeft, oldTop, oldRight, oldBottom) ->
-            repositionCompactMedia.run());
+    View.OnLayoutChangeListener relayout = (v, left, top, right, bottom,
+                                            oldLeft, oldTop, oldRight, oldBottom) -> {
+        if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop
+                || left != oldLeft) {
+            // Never reposition inside a layout pass: a layout request made here is
+            // swallowed, so the new width/margin would not be applied until a later
+            // pass. Post it so it runs after the pass has finished.
+            v.removeCallbacks(repositionCompactMedia);
+            v.post(repositionCompactMedia);
+        }
+    };
+    bar.addOnLayoutChangeListener(relayout);
+    // Weather text and icon count can change width without the bar itself changing.
+    rightGroup.addOnLayoutChangeListener(relayout);
+    icons.addOnLayoutChangeListener(relayout);
     bar.post(repositionCompactMedia);
 
     return bar;
@@ -1079,67 +1092,95 @@ private Runnable repositionCompactMedia;
 private void positionCompactMedia(
         FrameLayout bar,
         View mediaSlot,
+        View drawer,
+        View rightGroup,
         List<View> compactIcons) {
 
-    if (mediaSlot.getVisibility() == View.GONE || bar.getWidth() == 0) return;
+    if (mediaSlot.getVisibility() == View.GONE || bar.getWidth() == 0
+            || drawer.getWidth() == 0) return;
 
-    int maxWidth = bar.getWidth() - 2 * dp(64);
-    if (maxWidth <= 0) {
-        mediaSlot.setVisibility(View.INVISIBLE);
-        return;
-    }
+    final int gap = dp(2);
+    final int barWidth = bar.getWidth();
+    int[] barLoc = new int[2];
+    bar.getLocationOnScreen(barLoc);
 
-    int desiredWidth;
+    // Left limit: right edge of the app drawer icon (+gap). The same distance is
+    // reserved on the right edge so the text mode stays symmetric. The right-side
+    // group (signals, weather, clock) is a hard limit with a 2dp gap.
+    int[] loc = new int[2];
+    drawer.getLocationOnScreen(loc);
+    int drawerRight = loc[0] - barLoc[0] + drawer.getWidth();
+    int leftLimit = drawerRight + gap;
+    int weatherLimit = rightGroup.getLeft() - gap;
+
     boolean showingTrackInfo = compactTrackInfo != null
             && compactTrackInfo.getVisibility() == View.VISIBLE;
 
+    int width;
+    int left;
+
     if (showingTrackInfo && mediaTitle != null && mediaArtist != null) {
+        // Track info mode: expand as far as needed, always centered on the bar.
         float textWidth = Math.max(
                 mediaTitle.getPaint().measureText(mediaTitle.getText().toString()),
                 mediaArtist.getPaint().measureText(mediaArtist.getText().toString()));
 
         // Album art + media padding + track-info padding + text width.
-        desiredWidth = dp(24 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
+        int desiredWidth = dp(24 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
+
+        int rightLimit = Math.min(barWidth - leftLimit, weatherLimit);
+        int half = Math.min(barWidth / 2 - leftLimit, rightLimit - barWidth / 2);
+        if (half <= 0) {
+            mediaSlot.setVisibility(View.INVISIBLE);
+            return;
+        }
+        width = Math.min(desiredWidth, 2 * half);
+        left = (barWidth - width) / 2;
     } else {
+        // Button mode: fixed width. Stay centered while there is room, otherwise
+        // slide right away from the icons until the gap to the weather is reached.
+        int available = weatherLimit - leftLimit;
+        if (available <= 0) {
+            mediaSlot.setVisibility(View.INVISIBLE);
+            return;
+        }
         // Album art + horizontal padding + three compact playback buttons.
-        desiredWidth = dp(24 + 12 + 3 * 28);
+        width = Math.min(dp(24 + 12 + 3 * 28), available);
+        left = (barWidth - width) / 2;
+
+        int iconsEnd = drawerRight;
+        for (View icon : compactIcons) {
+            if (icon.getParent() == null) continue;
+            icon.getLocationOnScreen(loc);
+            iconsEnd = Math.max(iconsEnd, loc[0] - barLoc[0] + icon.getWidth());
+        }
+        left = Math.max(left, iconsEnd + gap);
+        left = Math.min(left, weatherLimit - width);
     }
 
-    int mediaWidth = Math.min(desiredWidth, maxWidth);
     FrameLayout.LayoutParams params =
             (FrameLayout.LayoutParams) mediaSlot.getLayoutParams();
-
-    mediaSlot.setVisibility(View.VISIBLE);
-    params.width = mediaWidth;
-    params.gravity = Gravity.CENTER;
-    mediaSlot.setTranslationX(0);
-    mediaSlot.setLayoutParams(params);
-
-    // Wait for FrameLayout to apply a changed width before testing overlaps.
-    if (mediaSlot.getWidth() != mediaWidth) {
-        bar.post(() -> positionCompactMedia(bar, mediaSlot, compactIcons));
-        return;
+    int margin = left - bar.getPaddingLeft();
+    if (params.width != width || params.leftMargin != margin
+            || params.gravity != (Gravity.LEFT | Gravity.CENTER_VERTICAL)) {
+        params.width = width;
+        params.leftMargin = margin;
+        params.gravity = Gravity.LEFT | Gravity.CENTER_VERTICAL;
+        mediaSlot.setLayoutParams(params);
     }
+    mediaSlot.setTranslationX(0);
+    mediaSlot.setVisibility(View.VISIBLE);
 
-    int mediaLeft = mediaSlot.getLeft();
-    int mediaRight = mediaLeft + mediaSlot.getWidth();
-
-    int[] barLocation = new int[2];
-    bar.getLocationOnScreen(barLocation);
-
+    // Hide every icon that would touch the media bar (or sits beyond it), so the
+    // number of visible shortcuts is limited when the media bar cannot move further.
     for (View icon : compactIcons) {
         if (icon.getParent() == null) continue;
-
-        int[] iconLocation = new int[2];
-        icon.getLocationOnScreen(iconLocation);
-        int iconLeft = iconLocation[0] - barLocation[0];
-        int iconRight = iconLeft + icon.getWidth();
-
-        boolean overlaps = iconRight > mediaLeft && iconLeft < mediaRight;
-        icon.setVisibility(overlaps ? View.INVISIBLE : View.VISIBLE);
+        icon.getLocationOnScreen(loc);
+        int iconRight = loc[0] - barLoc[0] + icon.getWidth();
+        icon.setVisibility(iconRight + gap > left ? View.INVISIBLE : View.VISIBLE);
     }
 }
-    
+
     private View buildSidePanel() {
         int n = columns;
         wifiBars = cellBars = null;
@@ -1731,11 +1772,25 @@ private View buildCompactMedia() {
 
     private View editable(View tile, int index, int count) {
         tile.setOnClickListener(null);
-        LinearLayout box = column();
-        box.addView(tile);
+        boolean compact = isCompactPanel();
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
+        if (compact) {
+            // Compact panel: overlay the buttons on the icon itself.
+            FrameLayout box = new FrameLayout(this);
+            box.addView(tile, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            bar.setBackground(rounded(0xB3000000, 6));
+            bar.addView(editButton("◀", index > 0, v -> moveShortcut(index, -1)), overlayButtonParams());
+            bar.addView(editButton("✕", true, v -> removeShortcut(index)), overlayButtonParams());
+            bar.addView(editButton("▶", index < count - 1, v -> moveShortcut(index, 1)), overlayButtonParams());
+            box.addView(bar, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            return box;
+        }
+        LinearLayout box = column();
+        box.addView(tile);
         bar.addView(editButton("◀", index > 0, v -> moveShortcut(index, -1)));
         bar.addView(editButton("✕", true, v -> removeShortcut(index)));
         bar.addView(editButton("▶", index < count - 1, v -> moveShortcut(index, 1)));
@@ -1743,11 +1798,16 @@ private View buildCompactMedia() {
         return box;
     }
 
+    private LinearLayout.LayoutParams overlayButtonParams() {
+        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+    }
+
     private TextView editButton(String glyph, boolean enabled, View.OnClickListener click) {
-        TextView b = text(glyph, 13, enabled ? ACCENT : 0xFF3A474D);
+        boolean compact = isCompactPanel();
+        TextView b = text(glyph, compact ? 11 : 13, enabled ? ACCENT : 0xFF3A474D);
         b.setGravity(Gravity.CENTER);
-        b.setMinWidth(dp(24));
-        b.setPadding(0, dp(4), 0, dp(4));
+        if (!compact) b.setMinWidth(dp(24));
+        b.setPadding(0, dp(compact ? 6 : 4), 0, dp(compact ? 6 : 4));
         if (enabled) b.setOnClickListener(click);
         return b;
     }
@@ -2750,13 +2810,16 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
             @Override protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
                 float w = getWidth(), h = getHeight();
-                float side = Math.min(w, h) * 0.46f;
+                float side = Math.min(w, h) * 0.64f;
                 float cell = side / 3f;
-                float r = cell * 0.36f;
+                float size = cell * 0.62f;          // dot size: bigger, with wider gaps
+                float corner = size * 0.32f;        // between square (0) and circle (0.5)
                 float x0 = (w - side) / 2f, y0 = (h - side) / 2f;
                 for (int row = 0; row < 3; row++) {
                     for (int col = 0; col < 3; col++) {
-                        canvas.drawCircle(x0 + cell * (col + 0.5f), y0 + cell * (row + 0.5f), r, dotPaint);
+                        float cx = x0 + cell * (col + 0.5f), cy = y0 + cell * (row + 0.5f);
+                        canvas.drawRoundRect(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f,
+                                corner, corner, dotPaint);
                     }
                 }
             }
