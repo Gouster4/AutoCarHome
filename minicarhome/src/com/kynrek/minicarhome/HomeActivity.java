@@ -1258,9 +1258,9 @@ private LinearLayout buildCompactWeather() {
     LinearLayout weather = new LinearLayout(this);
     weather.setOrientation(LinearLayout.VERTICAL);
     weather.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
-    weather.setPadding(dp(8), 0, dp(4), dp(4));
+    weather.setPadding(dp(8), 0, dp(4), 0);
 
-    weatherTemp = text("", 7, TEXT);
+    weatherTemp = text("", 8, TEXT);
     weatherTemp.setSingleLine(true);
     weatherTemp.setGravity(Gravity.END);
     weather.addView(weatherTemp);
@@ -1273,7 +1273,7 @@ private LinearLayout buildCompactWeather() {
     TextClock compactClock = new TextClock(this);
     compactClock.setFormat12Hour(timeFormat);
     compactClock.setFormat24Hour(timeFormat);
-    style(compactClock, 8, TEXT);
+    style(compactClock, 9, TEXT);
     compactClock.setSingleLine(true);
     compactClock.setGravity(Gravity.END);
     weather.addView(compactClock);
