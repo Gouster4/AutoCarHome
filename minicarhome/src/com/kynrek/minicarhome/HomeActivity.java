@@ -1870,16 +1870,22 @@ private View buildCompactMedia() {
         return row;
     }
 
-    private View assistantButton() {
+private View assistantButton() {
         ImageView assistant = new ImageView(this);
         assistant.setImageResource(getResources().getIdentifier("ic_mic", "drawable", getPackageName()));
         assistant.setScaleType(ImageView.ScaleType.CENTER);
-        GradientDrawable dot = rounded(listening ? LISTENING : ACCENT, 0);
-        dot.setShape(GradientDrawable.OVAL);
-        assistant.setBackground(dot);
+        
+        // Remove background shape assignment so only the microphone graphic shows
+        // GradientDrawable dot = rounded(listening ? LISTENING : ACCENT, 0);
+        // dot.setShape(GradientDrawable.OVAL);
+        // assistant.setBackground(dot);
+        
+        // Optional: tint the mic icon to match accent or listening state if desired
+        assistant.setImageTintList(ColorStateList.valueOf(listening ? LISTENING : ACCENT));
+
         assistant.setContentDescription("Assistant");
         assistant.setOnClickListener(v -> startAssistant());
-        micDot = dot;
+        micDot = null; // No background dot to update anymore
         return assistant;
     }
 
@@ -2805,8 +2811,7 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
 }
 
     
-    /** App drawer tile: a 3x3 grid of dots drawn on the same card as iconTile. */
-    private View appsGridTile(String name, View.OnClickListener click) {
+private View appsGridTile(String name, View.OnClickListener click) {
         boolean compact = isCompactPanel();
         final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         dotPaint.setColor(ACCENT);
@@ -2816,8 +2821,8 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
                 float w = getWidth(), h = getHeight();
                 float side = Math.min(w, h) * 0.64f;
                 float cell = side / 3f;
-                float size = cell * 0.62f;          // dot size: bigger, with wider gaps
-                float corner = size * 0.32f;        // between square (0) and circle (0.5)
+                float size = cell * 0.62f;
+                float corner = size * 0.32f;
                 float x0 = (w - side) / 2f, y0 = (h - side) / 2f;
                 for (int row = 0; row < 3; row++) {
                     for (int col = 0; col < 3; col++) {
@@ -2828,7 +2833,6 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
                 }
             }
         };
-        grid.setBackground(rounded(CARD, 12));
 
         LinearLayout t = column();
         int iconSize = compact ? dp(36) : dp(48);
@@ -2836,6 +2840,21 @@ private View panelTile(Drawable icon, String name, View.OnClickListener click) {
         addPanelLabel(t, name);
         t.setContentDescription(name);
         t.setOnClickListener(click);
+        
+        // Add long-click listener to open app settings / info
+        t.setOnLongClickListener(v -> {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to open app settings", e);
+                return false;
+            }
+        });
+        
         return t;
     }
 
