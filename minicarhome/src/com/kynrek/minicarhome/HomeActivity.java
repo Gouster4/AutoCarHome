@@ -84,7 +84,7 @@ public class HomeActivity extends Activity {
     private static final String TAG = "BoxHome";
     private static final String MAPS = "com.google.android.apps.maps";
     private static final String WAZE = "com.waze";
-    private static final int PICK_NONE = 0, PICK_SHORTCUT = 1, PICK_NAV = 2, PICK_ASSISTANT = 3;
+    private static final int PICK_NONE = 0, PICK_SHORTCUT = 1, PICK_NAV = 2, PICK_ASSISTANT = 3, PICK_OFFLINE = 4;
 
     // Main window is a multi-window task with launch bounds.
     private static final int WINDOWING_MODE_FREEFORM = 5, WINDOWING_MODE_MULTI_WINDOW = 6;
@@ -99,7 +99,9 @@ public class HomeActivity extends Activity {
     private static final long MAPS_RELAUNCH_SLOW_MS = 10000;     // afterwards, forever
     private static final int MAPS_FAST_TRIES = 18;
     private static final long BOOT_ONLINE_WAIT_MS = 90000;
-    private static final java.util.Set<String> ONLINE_AT_START = new java.util.HashSet<>(java.util.Arrays.asList(WAZE, MAPS));
+    // Retry loop state: which package it is currently driving (offline app first, then main app).
+    private String mapsTarget;
+    private boolean onlineSeen, offlineUp;
     private int mapsAttempts;
     private long mapsLaunchedAt;
     private boolean mapsPending, mapsInterrupted, topResumed, editing;
@@ -526,22 +528,64 @@ private final Runnable restoreCompactMediaControls = () -> {
         mapsAttempts = 0;
         mapsPending = true;
         mapsGen++;
-        paneTarget = navApp();
+        onlineSeen = false;
+        offlineUp = false;
+        mapsTarget = pickMapsTarget();
+        paneTarget = mapsTarget;
         main.removeCallbacks(mapsRetry);
         main.post(mapsRetry);
+    }
+
+    /** "none", "wait" or "app" (default: wait). A saved app that is no longer installed counts as wait. */
+    private String offlineMode() {
+        String v = prefs.getString("offline_app", "wait");
+        if ("none".equals(v)) return "none";
+        if ("wait".equals(v)) return "wait";
+        return pm.getLaunchIntentForPackage(v) != null ? "app" : "wait";
+    }
+
+    private String offlineApp() {
+        return "app".equals(offlineMode()) ? prefs.getString("offline_app", null) : null;
+    }
+
+    /**
+     * Offline app while there is no internet; the main app as soon as internet has been seen
+     * (and from then on for this round, so the offline app is forgotten).
+     */
+    private String pickMapsTarget() {
+        String mainApp = navApp(), off = offlineApp();
+        if (off == null || off.equals(mainApp) || onlineSeen) return mainApp;
+        if (online()) { onlineSeen = true; return mainApp; }
+        return off;
     }
 
     private final Runnable mapsRetry = new Runnable() {
         @Override public void run() {
             if (!mapsPending) return;
-            if (paneTarget != null && !paneTarget.equals(navApp())) {
+            if (paneTarget != null && !paneTarget.equals(mapsTarget)) {
                 mapsPending = false;
+                return;
+            }
+            String target = pickMapsTarget();
+            if (!target.equals(mapsTarget)) {
+                // offline app -> main app (or main app changed): start the attempts over
+                Log.i(TAG, "switching window target " + mapsTarget + " -> " + target);
+                mapsTarget = target;
+                mapsAttempts = 0;
+                offlineUp = false;
+                mapsGen++;
+                paneTarget = target;
+            }
+            if (offlineUp) {
+                // offline app is showing; just wait for internet
+                main.postDelayed(this, 1000);
                 return;
             }
 
             boolean booting = SystemClock.elapsedRealtime() < BOOT_ONLINE_WAIT_MS;
-            if (!getSystemService(android.os.UserManager.class).isUserUnlocked()
-                    || (mapsAttempts == 0 && booting && ONLINE_AT_START.contains(navApp()) && !online())) {
+            boolean waitForNet = mapsAttempts == 0 && booting && "wait".equals(offlineMode())
+                    && target.equals(navApp()) && !online();
+            if (!getSystemService(android.os.UserManager.class).isUserUnlocked() || waitForNet) {
                 main.postDelayed(this, 500);
                 return;
             }
@@ -551,9 +595,8 @@ private final Runnable restoreCompactMediaControls = () -> {
             }
 
             int gen = mapsGen;
-            String app = navApp();
             windowOps.execute(() -> {
-                Boolean up = taskVisible(app);
+                Boolean up = taskVisible(target);
                 main.post(() -> {
                     if (gen == mapsGen && mapsPending) mapsStep(up != null ? up : mapsAttempts > 0 && !topResumed);
                 });
@@ -562,12 +605,18 @@ private final Runnable restoreCompactMediaControls = () -> {
     };
 
     private void mapsStep(boolean up) {
-        if (paneTarget != null && !paneTarget.equals(navApp())) {
+        if (paneTarget != null && !paneTarget.equals(mapsTarget)) {
             mapsPending = false;
             return;
         }
         if (up) {
-            Log.i(TAG, "Maps window is up after " + mapsAttempts + " tries");
+            Log.i(TAG, mapsTarget + " window is up after " + mapsAttempts + " tries");
+            if (!mapsTarget.equals(navApp())) {
+                // offline app is up: keep watching for internet, then start the main app
+                offlineUp = true;
+                main.postDelayed(mapsRetry, 1000);
+                return;
+            }
             mapsPending = false;
             return;
         }
@@ -579,9 +628,9 @@ private final Runnable restoreCompactMediaControls = () -> {
             return;
         }
         if (mapsAttempts < Integer.MAX_VALUE) mapsAttempts++;
-        Log.i(TAG, "opening Maps window, try " + mapsAttempts + " (" + SystemClock.elapsedRealtime() / 1000
+        Log.i(TAG, "opening " + mapsTarget + " window, try " + mapsAttempts + " (" + SystemClock.elapsedRealtime() / 1000
                 + " s after boot)");
-        launchMaps();
+        launchPackage(mapsTarget);
         mapsLaunchedAt = SystemClock.uptimeMillis();
         main.postDelayed(mapsRetry, MAPS_CHECK_MS);
     }
@@ -593,9 +642,15 @@ private final Runnable restoreCompactMediaControls = () -> {
     }
 
     private boolean online() {
-        android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
-        android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
-        return nc != null && nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        try {
+            android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+            android.net.Network net = cm.getActiveNetwork();
+            if (net == null) return false;
+            android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(net);
+            return nc != null && nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private void goHome() {
@@ -606,14 +661,16 @@ private final Runnable restoreCompactMediaControls = () -> {
         launchMaps();
     }
 
-    private void launchMaps() {
-        Intent i = pm.getLaunchIntentForPackage(navApp());
+    private void launchMaps() { launchPackage(navApp()); }
+
+    private void launchPackage(String pkg) {
+        Intent i = pm.getLaunchIntentForPackage(pkg);
         if (i == null) {
-            Log.i(TAG, "Maps not available yet");
+            Log.i(TAG, pkg + " not available yet");
             return;
         }
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startInPane(i, navApp());
+        startInPane(i, pkg);
     }
 
     private void startInPane(Intent i, String pkg) {
@@ -858,6 +915,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     private void showPicker() { openBrowser(PICK_SHORTCUT); }
     private void showNavPicker() { openBrowser(PICK_NAV); }
     private void showAssistantPicker() { openBrowser(PICK_ASSISTANT); }
+    private void showOfflinePicker() { openBrowser(PICK_OFFLINE); }
 
     private void openBrowser(int pick) {
         if (browserShown || !Settings.canDrawOverlays(this)) return;
@@ -1692,6 +1750,18 @@ private View buildCompactMedia() {
         nav.addView(choice("Change", false, v -> showNavPicker()));
         s.addView(nav, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
 
+        s.addView(text(n >= 3 ? "Offline app (no internet)" : "Offline app", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
+        LinearLayout off = new LinearLayout(this);
+        off.setOrientation(LinearLayout.HORIZONTAL);
+        String offMode = offlineMode(), offApp = offlineApp();
+        off.addView(choice("None", "none".equals(offMode), v -> setString("offline_app", "none")));
+        off.addView(choice("Wait", "wait".equals(offMode), v -> setString("offline_app", "wait")));
+        off.addView(choice(offApp == null ? "Choose…" : appName(offApp), offApp != null, v -> showOfflinePicker()));
+        HorizontalScrollView offScroll = new HorizontalScrollView(this);
+        offScroll.setHorizontalScrollBarEnabled(false);
+        offScroll.addView(off);
+        s.addView(offScroll, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
         s.addView(toggleRow(n >= 3 ? "Open apps in main window" : "Apps in main", "apps_in_pane"),
                 marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 12));
         s.addView(toggleRow("Clock & date", "show_clock"), marginTop(ViewGroup.LayoutParams.MATCH_PARENT, 12));
@@ -2426,7 +2496,8 @@ private View wazeTile(String entry) {
             search = new EditText(c);
             search.setHint(pick == PICK_SHORTCUT ? "Add a shortcut: search apps"
                     : pick == PICK_NAV ? "Main display app: search apps"
-                    : pick == PICK_ASSISTANT ? "Assistant app: search apps" : "Search apps");
+                    : pick == PICK_ASSISTANT ? "Assistant app: search apps"
+                    : pick == PICK_OFFLINE ? "Offline app: search apps" : "Search apps");
             search.setSingleLine(true);
             style(search, 17, TEXT);
             search.setHintTextColor(DIM);
@@ -2575,6 +2646,9 @@ adapter = new BaseAdapter() {
             } else if (pick == PICK_NAV) {
                 hideBrowser();
                 setNavApp(cn.getPackageName());
+            } else if (pick == PICK_OFFLINE) {
+                hideBrowser();
+                setString("offline_app", cn.getPackageName());
             } else if (pick == PICK_ASSISTANT) {
                 hideBrowser();
                 prefs.edit().putString("assistant_app", cn.getPackageName()).putString("assistant_mode", "app").apply();
