@@ -1033,6 +1033,7 @@ private final Runnable restoreCompactMediaControls = () -> {
     }
     
     private View buildCompactBar() {
+    if (columns >= 2) return buildCompactBarMultiRow();
     FrameLayout bar = new FrameLayout(this);
     bar.setBackgroundColor(BG);
     bar.setPadding(dp(4), dp(4), dp(4), dp(4));
@@ -1280,6 +1281,185 @@ private void positionCompactMedia(
         icon.setVisibility(iconRight + gap > left ? View.INVISIBLE : View.VISIBLE);
     }
 }
+
+    /**
+     * Multi-row compact bar (top/bottom panel with 2..4 rows).
+     * - Icons fill columns from the left: the 1st icon of every row is placed before the 2nd
+     *   column starts. Inside a column the order is bottom to top.
+     * - Regular media card instead of the compact media widget.
+     * - Weather sits in the bottom row at the far right; signals (if shown) one row above it.
+     */
+    private View buildCompactBarMultiRow() {
+        final int rows = Math.max(2, Math.min(MAX_COLUMNS, columns));
+        final int cell = dp(36);
+
+        FrameLayout bar = new FrameLayout(this);
+        bar.setBackgroundColor(BG);
+        bar.setPadding(dp(4), dp(4), dp(4), dp(4));
+
+        // Icons in priority order: drawer, assistant, home app, user shortcuts, edit buttons.
+        List<View> ordered = new ArrayList<>();
+        ordered.add(appsGridTile("All apps", v -> showBrowser()));
+
+        if (prefs.getBoolean("show_mic", false)) {
+            FrameLayout micSlot = new FrameLayout(this);
+            micSlot.addView(assistantButton(), new FrameLayout.LayoutParams(cell, cell, Gravity.CENTER));
+            ordered.add(micSlot);
+        }
+
+        View home = appTile(navApp());
+        home.setOnClickListener(v -> goHome());
+        ordered.add(home);
+
+        List<String> list = shortcuts();
+        int userCount = 0;
+        for (String entry : list) {
+            if (navApp().equals(entry.split("/")[0])) continue;
+            View tile = null;
+            if (isWazeEntry(entry)) {
+                tile = wazeTile(entry);
+            } else if (entry.contains("/")) {
+                tile = activityTile(ComponentName.unflattenFromString(entry));
+            } else if (pm.getLaunchIntentForPackage(entry) != null) {
+                tile = appTile(entry);
+            }
+            if (tile != null) {
+                if (editing) tile = editable(tile, userCount, list.size());
+                userCount++;
+                ordered.add(tile);
+            }
+        }
+        if (editing) {
+            ordered.add(iconTile("+", "Add", v -> showPicker()));
+            ordered.add(iconTile("✓", "Done", v -> { editing = false; rebuildPanel(); }));
+        }
+
+        // Column-major grid: column c holds icons c*rows .. c*rows+rows-1, bottom row first.
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.HORIZONTAL);
+        final List<View> columnViews = new ArrayList<>();
+        int colCount = (ordered.size() + rows - 1) / rows;
+        for (int c = 0; c < colCount; c++) {
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            for (int r = 0; r < rows; r++) {           // r = 0 is the top row
+                int idx = c * rows + (rows - 1 - r);   // bottom row gets the lowest index
+                View v = idx < ordered.size() ? ordered.get(idx) : new View(this);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cell, cell);
+                lp.rightMargin = dp(2);
+                col.addView(v, lp);
+            }
+            grid.addView(col, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            columnViews.add(col);
+        }
+
+        // Right group: weather in the bottom row, signals (if shown) one row above it.
+        LinearLayout rightGroup = new LinearLayout(this);
+        rightGroup.setOrientation(LinearLayout.VERTICAL);
+        rightGroup.setGravity(Gravity.BOTTOM | Gravity.END);
+
+        String place = signalPlace();
+        if ("bottom".equals(place) || "top".equals(place)) {
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, cell);
+            sp.gravity = Gravity.END;
+            rightGroup.addView(signalsRowCompact(), sp);
+        }
+        LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, cell);
+        wp.gravity = Gravity.END;
+        rightGroup.addView(buildCompactWeather(), wp);
+
+        // Regular media card (the compact widget's views are not used here).
+        compactMediaControls = null;
+        compactTrackInfo = null;
+        FrameLayout mediaSlot = new FrameLayout(this);
+        boolean showMedia = prefs.getBoolean("show_media", true);
+        if (showMedia) {
+            mediaSlot.addView(buildMediaCard(Math.max(3, rows), rows), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL));
+        } else {
+            mediaTitle = new TextView(this);
+            mediaArtist = new TextView(this);
+            mediaArt = new ImageView(this);
+            playButton = new TextView(this);
+            progressRow = null;
+        }
+        mediaSlot.setVisibility(showMedia ? View.INVISIBLE : View.GONE);
+
+        // Media first so icons and the right group stay on top for touch.
+        bar.addView(mediaSlot, new FrameLayout.LayoutParams(
+                dp(300), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        bar.addView(grid, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        bar.addView(rightGroup, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.RIGHT | Gravity.CENTER_VERTICAL));
+
+        repositionCompactMedia = () ->
+                positionMultiRowMedia(bar, mediaSlot, grid, columnViews, rightGroup);
+
+        View.OnLayoutChangeListener relayout = (v, left, top, right, bottom,
+                                                oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop
+                    || left != oldLeft) {
+                v.removeCallbacks(repositionCompactMedia);
+                v.post(repositionCompactMedia);
+            }
+        };
+        bar.addOnLayoutChangeListener(relayout);
+        rightGroup.addOnLayoutChangeListener(relayout);
+        grid.addOnLayoutChangeListener(relayout);
+        bar.post(repositionCompactMedia);
+        return bar;
+    }
+
+    private void positionMultiRowMedia(FrameLayout bar, View mediaSlot, View grid,
+                                       List<View> columnViews, View rightGroup) {
+        if (bar.getWidth() == 0 || grid.getWidth() == 0 || columnViews.isEmpty()) return;
+        final int gap = dp(2);
+        final int barWidth = bar.getWidth();
+        final int gridLeft = grid.getLeft();
+        View first = columnViews.get(0);
+        int leftLimit = gridLeft + first.getLeft() + first.getWidth() + gap;
+        int rightLimit = rightGroup.getLeft() - gap;
+        boolean hasMedia = mediaSlot.getVisibility() != View.GONE;
+        int available = rightLimit - leftLimit;
+
+        int mediaLeft;
+        if (!hasMedia) {
+            mediaLeft = rightLimit;
+        } else if (available < dp(180)) {
+            mediaSlot.setVisibility(View.INVISIBLE);
+            mediaLeft = rightLimit;
+        } else {
+            int width = Math.min(dp(300), available);
+            int left = (barWidth - width) / 2;
+            left = Math.max(left, gridLeft + grid.getWidth() + gap);
+            left = Math.min(left, rightLimit - width);
+            left = Math.max(left, leftLimit);
+
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mediaSlot.getLayoutParams();
+            int margin = left - bar.getPaddingLeft();
+            if (params.width != width || params.leftMargin != margin) {
+                params.width = width;
+                params.leftMargin = margin;
+                params.gravity = Gravity.LEFT | Gravity.CENTER_VERTICAL;
+                mediaSlot.setLayoutParams(params);
+            }
+            mediaSlot.setVisibility(View.VISIBLE);
+            mediaLeft = left;
+        }
+
+        // Hide whole columns that would touch the media card (or the right group).
+        for (View col : columnViews) {
+            int colRight = gridLeft + col.getLeft() + col.getWidth();
+            col.setVisibility(colRight + gap > mediaLeft ? View.INVISIBLE : View.VISIBLE);
+        }
+    }
 
     private View buildSidePanel() {
         int n = columns;
@@ -2422,12 +2602,17 @@ private View wazeTile(String entry) {
         return grid;
     }
 
-    private View buildMediaCard(int n) {
+    private View buildMediaCard(int n) { return buildMediaCard(n, 0); }
+
+    /** tightRows > 0: used inside the multi-row compact bar; trims padding/sizes to fit. */
+    private View buildMediaCard(int n, int tightRows) {
+        boolean tight = tightRows > 0;
         boolean wide = n >= 3;
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(rounded(wallpaperFile().exists() ? 0xB31B2428 : CARD, 16));
-        card.setPadding(dp(8), dp(8), dp(8), dp(6));
+        card.setBackground(rounded(wallpaperFile().exists() ? 0xB31B2428 : CARD, tight ? 12 : 16));
+        if (tight) card.setPadding(dp(6), dp(4), dp(6), dp(3));
+        else card.setPadding(dp(8), dp(8), dp(8), dp(6));
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -2436,16 +2621,16 @@ private View wazeTile(String entry) {
         mediaArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
         mediaArt.setBackground(rounded(0xFF26323A, 10));
         mediaArt.setClipToOutline(true);
-        int art = n >= 4 ? 56 : n == 3 ? 48 : 40;
+        int art = tight ? (tightRows >= 3 ? 44 : 36) : n >= 4 ? 56 : n == 3 ? 48 : 40;
         top.addView(mediaArt, new LinearLayout.LayoutParams(dp(art), dp(art)));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
         info.setPadding(dp(10), 0, 0, 0);
-        mediaTitle = text("Nothing playing", wide ? 16 : 14, TEXT);
+        mediaTitle = text("Nothing playing", tight ? 12 : wide ? 16 : 14, TEXT);
         mediaTitle.setSingleLine(true);
         mediaTitle.setEllipsize(TextUtils.TruncateAt.END);
-        mediaArtist = text("", wide ? 13 : 12, DIM);
+        mediaArtist = text("", tight ? 10 : wide ? 13 : 12, DIM);
         mediaArtist.setSingleLine(true);
         mediaArtist.setEllipsize(TextUtils.TruncateAt.END);
         info.addView(mediaTitle);
@@ -2486,11 +2671,20 @@ private View wazeTile(String entry) {
             controls.addView(next);
         }
 
-        if (wide && !five) info.addView(controls);
+        boolean controlsInInfo = tight || (wide && !five);
+        if (controlsInInfo) info.addView(controls);
         top.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         card.addView(top);
-        if (!wide || five) card.addView(controls, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (!controlsInInfo) card.addView(controls, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        if (tight && tightRows < 3) {
+            // Not enough height for a progress row in a 2-row bar.
+            progressRow = null;
+            mediaProgress = null;
+            mediaRemaining = null;
+            card.setOnClickListener(v -> { if (controller != null) open(controller.getPackageName()); });
+            return card;
+        }
         progressRow = new LinearLayout(this);
         progressRow.setOrientation(LinearLayout.HORIZONTAL);
         progressRow.setGravity(Gravity.CENTER_VERTICAL);
