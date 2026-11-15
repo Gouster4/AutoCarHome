@@ -1042,10 +1042,17 @@ if (editing) {
             ViewGroup.LayoutParams.MATCH_PARENT,
             Gravity.CENTER));
 
-    if (!prefs.getBoolean("show_media", true)) {
-        mediaSlot.setVisibility(View.GONE);
-    }
+    boolean showMedia = prefs.getBoolean("show_media", true);
+    mediaSlot.setVisibility(showMedia ? View.INVISIBLE : View.GONE);
 
+    // 1. Add mediaSlot FIRST so it sits underneath icons and rightGroup in Z-order
+    FrameLayout.LayoutParams mediaParams = new FrameLayout.LayoutParams(
+            dp(240),
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.LEFT | Gravity.CENTER_VERTICAL);
+    bar.addView(mediaSlot, mediaParams);
+
+    // 2. Add icons and rightGroup AFTER mediaSlot so their touch targets always take priority
     FrameLayout.LayoutParams iconsParams = new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1057,12 +1064,6 @@ if (editing) {
             ViewGroup.LayoutParams.MATCH_PARENT,
             Gravity.RIGHT | Gravity.CENTER_VERTICAL);
     bar.addView(rightGroup, rightParams);
-
-    FrameLayout.LayoutParams mediaParams = new FrameLayout.LayoutParams(
-            dp(240),
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            Gravity.LEFT | Gravity.CENTER_VERTICAL);
-    bar.addView(mediaSlot, mediaParams);
 
     repositionCompactMedia = () ->
             positionCompactMedia(bar, mediaSlot, drawerTile, rightGroup, compactIcons);
