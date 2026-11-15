@@ -1346,6 +1346,7 @@ private View buildCompactMedia() {
 
     TextView previous = mediaButton("|◀", false, true);
     previous.setContentDescription("Previous track");
+    previous.setPadding(0, 0, 0, dp(4));
     previous.setOnClickListener(v -> {
         if (controller != null) controller.getTransportControls().skipToPrevious();
     });
@@ -1353,11 +1354,13 @@ private View buildCompactMedia() {
 
     playButton = mediaButton("▶", false, true);
     playButton.setContentDescription("Play or pause");
+    playButton.setPadding(0, 0, 0, dp(4));
     playButton.setOnClickListener(v -> togglePlay());
     controls.addView(playButton);
 
     TextView next = mediaButton("▶|", false, true);
     next.setContentDescription("Next track");
+    next.setPadding(0, 0, 0, dp(4));
     next.setOnClickListener(v -> {
         if (controller != null) controller.getTransportControls().skipToNext();
     });
@@ -1375,12 +1378,12 @@ private View buildCompactMedia() {
     trackInfo.setGravity(Gravity.CENTER_VERTICAL);
     trackInfo.setPadding(dp(8), 0, dp(4), 0);
 
-    mediaTitle = text("Nothing playing", 12, TEXT);
+    mediaTitle = text("Nothing playing", 8, TEXT);
     mediaTitle.setSingleLine(true);
     mediaTitle.setEllipsize(TextUtils.TruncateAt.END);
     trackInfo.addView(mediaTitle);
 
-    mediaArtist = text("", 10, DIM);
+    mediaArtist = text("", 6, DIM);
     mediaArtist.setSingleLine(true);
     mediaArtist.setEllipsize(TextUtils.TruncateAt.END);
     trackInfo.addView(mediaArtist);
