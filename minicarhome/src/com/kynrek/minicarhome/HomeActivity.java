@@ -961,7 +961,6 @@ if (prefs.getBoolean("show_mic", false)) {
     LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
             dp(36), ViewGroup.LayoutParams.MATCH_PARENT);
     micParams.rightMargin = dp(2);
-    micParams.topMargin = dp(4);
     icons.addView(micSlot, micParams);
     compactIcons.add(micSlot);
 }
