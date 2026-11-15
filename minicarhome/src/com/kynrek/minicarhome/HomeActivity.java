@@ -1669,10 +1669,12 @@ private View buildCompactMedia() {
     private final Runnable weatherTick = new Runnable() {
         @Override public void run() {
             Weather last = Weather.cached(prefs);
-            if (last == null || System.currentTimeMillis() - last.fetchedAt > WEATHER_REFRESH_MS - 60_000) {
+            String unit = tempUnit();
+            if (last == null || !unit.equals(last.unit)
+                    || System.currentTimeMillis() - last.fetchedAt > WEATHER_REFRESH_MS - 60_000) {
                 Context app = getApplicationContext();
                 new Thread(() -> {
-                    Weather w = Weather.fetch(app);
+                    Weather w = Weather.fetch(app, unit);
                     if (w != null) {
                         w.save(prefs);
                         main.post(HomeActivity.this::showWeather);
@@ -1690,9 +1692,20 @@ private View buildCompactMedia() {
         }
     };
 
+    /** "c" (default) or "f". */
+    private String tempUnit() { return "f".equals(prefs.getString("temp_unit", "c")) ? "f" : "c"; }
+
+    private void setTempUnit(String unit) {
+        prefs.edit().putString("temp_unit", unit).apply();
+        rebuildPanel();
+        main.removeCallbacks(weatherTick);
+        main.post(weatherTick);
+    }
+
     private void showWeather() {
         if (weatherTemp == null) return;
         Weather w = Weather.cached(prefs);
+        if (w != null) w = w.inUnit(tempUnit());   // shown right away even before the refetch lands
         if (w == null) {
             weatherTemp.setText("");
             if (weatherRange != null) weatherRange.setText("");
@@ -1865,6 +1878,13 @@ private View buildCompactMedia() {
         }
         thickScroll.addView(th);
         s.addView(thickScroll, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
+
+        s.addView(text("Temperature", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
+        LinearLayout tu = new LinearLayout(this);
+        tu.setOrientation(LinearLayout.HORIZONTAL);
+        tu.addView(choice("°C", "c".equals(tempUnit()), v -> setTempUnit("c")));
+        tu.addView(choice("°F", "f".equals(tempUnit()), v -> setTempUnit("f")));
+        s.addView(tu, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
 
         s.addView(text("Signal", 14, TEXT), marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 12));
         LinearLayout sig = new LinearLayout(this);
