@@ -1125,8 +1125,8 @@ private void positionCompactMedia(
                 mediaTitle.getPaint().measureText(mediaTitle.getText().toString()),
                 mediaArtist.getPaint().measureText(mediaArtist.getText().toString()));
 
-        // Album art + media padding + track-info padding + text width.
-        int desiredWidth = dp(24 + 12 + 8 + 4) + (int) Math.ceil(textWidth);
+        // Album art (26dp) + spacing/padding (6dp + 8dp + 4dp) + text width + safety buffer.
+        int desiredWidth = dp(26 + 6 + 8 + 4 + 8) + (int) Math.ceil(textWidth);
 
         int rightLimit = Math.min(barWidth - leftLimit, weatherLimit);
         int half = Math.min(barWidth / 2 - leftLimit, rightLimit - barWidth / 2);
