@@ -577,11 +577,10 @@ private final Runnable restoreCompactMediaControls = () -> {
                 paneTarget = target;
             }
             if (offlineUp) {
-                // offline app is showing; just wait for internet
+                // Offline app is showing: no more window checks, just wait for internet.
                 main.postDelayed(this, 1000);
                 return;
             }
-
             boolean booting = SystemClock.elapsedRealtime() < BOOT_ONLINE_WAIT_MS;
             boolean waitForNet = mapsAttempts == 0 && booting && "wait".equals(offlineMode())
                     && target.equals(navApp()) && !online();
@@ -612,7 +611,8 @@ private final Runnable restoreCompactMediaControls = () -> {
         if (up) {
             Log.i(TAG, mapsTarget + " window is up after " + mapsAttempts + " tries");
             if (!mapsTarget.equals(navApp())) {
-                // offline app is up: keep watching for internet, then start the main app
+                // Offline app is up: don't recheck it or relaunch it. Only watch for internet,
+                // then the loop switches to the main app.
                 offlineUp = true;
                 main.postDelayed(mapsRetry, 1000);
                 return;
