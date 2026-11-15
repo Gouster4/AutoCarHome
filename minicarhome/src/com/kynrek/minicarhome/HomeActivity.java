@@ -98,10 +98,12 @@ public class HomeActivity extends Activity {
     private static final long MAPS_RELAUNCH_MS = 5000;        // first MAPS_FAST_TRIES relaunches
     private static final long MAPS_RELAUNCH_SLOW_MS = 10000;     // afterwards, forever
     private static final int MAPS_FAST_TRIES = 18;
+    private static final long MAPS_WATCHDOG_MS = 5000;           // recheck interval once the window is up
+    private static final int MAPS_UNVERIFIED_TRIES = 3;          // tries before trusting an unverifiable launch
     private static final long BOOT_ONLINE_WAIT_MS = 90000;
     // Retry loop state: which package it is currently driving (offline app first, then main app).
     private String mapsTarget;
-    private boolean onlineSeen, offlineUp;
+    private boolean onlineSeen, mapsUpSeen;
     private int mapsAttempts;
     private long mapsLaunchedAt;
     private boolean mapsPending, mapsInterrupted, topResumed, editing;
@@ -536,7 +538,7 @@ private final Runnable restoreCompactMediaControls = () -> {
         mapsPending = true;
         mapsGen++;
         onlineSeen = false;
-        offlineUp = false;
+        mapsUpSeen = false;
         mapsTarget = pickMapsTarget();
         paneTarget = mapsTarget;
         main.removeCallbacks(mapsRetry);
@@ -595,14 +597,9 @@ private final Runnable restoreCompactMediaControls = () -> {
                 Log.i(TAG, "switching window target " + mapsTarget + " -> " + target);
                 mapsTarget = target;
                 mapsAttempts = 0;
-                offlineUp = false;
+                mapsUpSeen = false;
                 mapsGen++;
                 paneTarget = target;
-            }
-            if (offlineUp) {
-                // Offline app is showing: no more window checks, just wait for internet.
-                main.postDelayed(this, 1000);
-                return;
             }
             boolean booting = SystemClock.elapsedRealtime() < BOOT_ONLINE_WAIT_MS;
             boolean waitForNet = mapsAttempts == 0 && booting && "wait".equals(offlineMode())
@@ -612,7 +609,7 @@ private final Runnable restoreCompactMediaControls = () -> {
                 return;
             }
             if (!windowsReady()) {
-                mapsStep(mapsAttempts > 0 && !topResumed);
+                mapsStep(unverifiedUp());
                 return;
             }
 
@@ -620,11 +617,16 @@ private final Runnable restoreCompactMediaControls = () -> {
             windowOps.execute(() -> {
                 Boolean up = taskVisible(target);
                 main.post(() -> {
-                    if (gen == mapsGen && mapsPending) mapsStep(up != null ? up : mapsAttempts > 0 && !topResumed);
+                    if (gen == mapsGen && mapsPending) mapsStep(up != null ? up : unverifiedUp());
                 });
             });
         }
     };
+
+    /** Best guess when the window state can't be read: trust the launch only after a few tries. */
+    private boolean unverifiedUp() {
+        return mapsAttempts >= MAPS_UNVERIFIED_TRIES && !topResumed;
+    }
 
     private void mapsStep(boolean up) {
         if (paneTarget != null && !paneTarget.equals(mapsTarget)) {
@@ -632,16 +634,18 @@ private final Runnable restoreCompactMediaControls = () -> {
             return;
         }
         if (up) {
-            Log.i(TAG, mapsTarget + " window is up after " + mapsAttempts + " tries");
-            if (!mapsTarget.equals(navApp())) {
-                // Offline app is up: don't recheck it or relaunch it. Only watch for internet,
-                // then the loop switches to the main app.
-                offlineUp = true;
-                main.postDelayed(mapsRetry, 1000);
-                return;
-            }
-            mapsPending = false;
+            if (!mapsUpSeen) Log.i(TAG, mapsTarget + " window is up after " + mapsAttempts + " tries");
+            mapsUpSeen = true;
+            // Watchdog: keep checking, so a crashed or closed app is relaunched. The target is
+            // the offline app while offline and the main app once internet is seen.
+            main.postDelayed(mapsRetry, MAPS_WATCHDOG_MS);
             return;
+        }
+        if (mapsUpSeen) {
+            // It was up and is gone (crash/exit): start over with the fast schedule.
+            Log.i(TAG, mapsTarget + " window is gone, relaunching");
+            mapsUpSeen = false;
+            mapsAttempts = 0;
         }
         // Never give up: relaunch every 5s for the first 18 tries, then every 10s forever.
         long wait = mapsAttempts <= 0 ? 0
