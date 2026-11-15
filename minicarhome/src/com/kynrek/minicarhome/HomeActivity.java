@@ -243,6 +243,11 @@ private final Runnable restoreCompactMediaControls = () -> {
         panel.addView(buildPanel());
         main.postDelayed(this::ensureMaps, 800);
         applySavedDensity();
+        try {
+            getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(netCb);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "network callback unavailable", e);
+        }
         syncStatusIcons();
     }
 
@@ -260,6 +265,8 @@ private final Runnable restoreCompactMediaControls = () -> {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(appsChanged);
+        try { getSystemService(ConnectivityManager.class).unregisterNetworkCallback(netCb); }
+        catch (RuntimeException ignored) { }
         windowOps.shutdown();
     }
 
@@ -534,6 +541,22 @@ private final Runnable restoreCompactMediaControls = () -> {
         paneTarget = mapsTarget;
         main.removeCallbacks(mapsRetry);
         main.post(mapsRetry);
+    }
+
+    // Independent of the retry loop (which stops when this activity is stopped): the moment
+    // internet is validated while the offline app is our target, switch to the main app.
+    private final ConnectivityManager.NetworkCallback netCb = new ConnectivityManager.NetworkCallback() {
+        @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities nc) {
+            if (nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) main.post(HomeActivity.this::onInternetUp);
+        }
+    };
+
+    private void onInternetUp() {
+        String off = offlineApp();
+        if (off == null || mapsTarget == null || !mapsTarget.equals(off) || off.equals(navApp())) return;
+        if (!mapsTarget.equals(paneTarget)) return; // user opened something else meanwhile
+        Log.i(TAG, "internet is up, switching " + off + " -> " + navApp());
+        ensureMaps();
     }
 
     /** "none", "wait" or "app" (default: wait). A saved app that is no longer installed counts as wait. */
@@ -2649,6 +2672,7 @@ adapter = new BaseAdapter() {
             } else if (pick == PICK_OFFLINE) {
                 hideBrowser();
                 setString("offline_app", cn.getPackageName());
+                if (!online()) ensureMaps();
             } else if (pick == PICK_ASSISTANT) {
                 hideBrowser();
                 prefs.edit().putString("assistant_app", cn.getPackageName()).putString("assistant_mode", "app").apply();
