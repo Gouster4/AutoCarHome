@@ -239,7 +239,7 @@ private final Runnable restoreCompactMediaControls = () -> {
         panel = new FrameLayout(this);
         panel.addView(buildPanel());
         main.postDelayed(this::ensureMaps, 800);
-        if (!prefs.contains("density")) setDensity(DEFAULT_DENSITY);
+        applySavedDensity();
         syncStatusIcons();
     }
 
@@ -1411,17 +1411,80 @@ private View buildCompactMedia() {
     private static final int DEFAULT_DENSITY = 160;
     private static final int[] DENSITIES = {120, 140, 160, 180, 200};
 
-    private void setDensity(int dpi) {
+    // Guards against retry loops: a density change can recreate the activity,
+    // so only ever try to apply the saved density once per process.
+    private static boolean densityStartupTried = false;
+
+    /** Low-level call. Returns true on success, false on any failure (never throws). */
+    private boolean forceDensity(int dpi) {
         try {
-            Object wms = Class.forName("android.view.WindowManagerGlobal").getMethod("getWindowManagerService").invoke(null);
+            Object wms = Class.forName("android.view.WindowManagerGlobal")
+                    .getMethod("getWindowManagerService").invoke(null);
             wms.getClass().getMethod("setForcedDisplayDensityForUser", int.class, int.class, int.class)
                     .invoke(wms, 0, dpi, 0);
-            prefs.edit().putInt("density", dpi).apply();
-        } catch (Exception e) {
-            Log.w("MiniCarHome", "setDensity failed", e);
+            return true;
+        } catch (Throwable e) {
+            Log.w("MiniCarHome", "forceDensity(" + dpi + ") failed", e);
+            return false;
+        }
+    }
+
+    /** Best-effort reset of the system's forced density back to the device default. */
+    private boolean clearForcedDensity() {
+        try {
+            Object wms = Class.forName("android.view.WindowManagerGlobal")
+                    .getMethod("getWindowManagerService").invoke(null);
+            wms.getClass().getMethod("clearForcedDisplayDensityForUser", int.class, int.class)
+                    .invoke(wms, 0, 0);
+            return true;
+        } catch (Throwable e) {
+            Log.w("MiniCarHome", "clearForcedDensity failed", e);
+            return false;
+        }
+    }
+
+    /** Startup: silently apply the saved density if possible; ignore failures. */
+    private void applySavedDensity() {
+        if (densityStartupTried) return;
+        densityStartupTried = true;
+        try {
+            if (prefs.contains("density")) {
+                int saved = prefs.getInt("density", 0);
+                int current = getResources().getConfiguration().densityDpi;
+                if (saved > 0 && saved != current && !forceDensity(saved)) {
+                    Log.w("MiniCarHome", "saved density " + saved + " can't be applied, ignoring");
+                }
+            } else if (!prefs.getBoolean("density_init", false)) {
+                // First run only: try the default once. Not retried if it fails,
+                // and not re-applied after the user picks "None".
+                prefs.edit().putBoolean("density_init", true).apply();
+                if (forceDensity(DEFAULT_DENSITY)) {
+                    prefs.edit().putInt("density", DEFAULT_DENSITY).apply();
+                }
+            }
+        } catch (Throwable t) {
+            Log.w("MiniCarHome", "applySavedDensity failed", t);
+        }
+    }
+
+    /** User picked a density in settings. */
+    private void setDensity(int dpi) {
+        if (forceDensity(dpi)) {
+            prefs.edit().putInt("density", dpi).putBoolean("density_init", true).apply();
+        } else {
             Toast.makeText(this, "Display size needs setup: adb shell pm grant com.kynrek.minicarhome "
                     + "android.permission.WRITE_SECURE_SETTINGS", Toast.LENGTH_LONG).show();
         }
+    }
+
+    /** User picked "None": wipe the saved value and (if permitted) restore system density. */
+    private void clearDensity() {
+        prefs.edit().remove("density").putBoolean("density_init", true).apply();
+        if (!clearForcedDensity()) {
+            Toast.makeText(this, "Saved display size removed (system size left unchanged)",
+                    Toast.LENGTH_SHORT).show();
+        }
+        rebuildPanel();
     }
 
     private static final int PICK_WALLPAPER = 41;
@@ -1592,7 +1655,8 @@ private View buildCompactMedia() {
         LinearLayout ds = new LinearLayout(this);
         ds.setOrientation(LinearLayout.HORIZONTAL);
         int dpi = getResources().getConfiguration().densityDpi;
-        for (int d : DENSITIES) ds.addView(choice(String.valueOf(d), d == dpi, v -> setDensity(d)));
+        ds.addView(choice("None", !prefs.contains("density"), v -> clearDensity()));
+        for (int d : DENSITIES) ds.addView(choice(String.valueOf(d), prefs.contains("density") && d == dpi, v -> setDensity(d)));
         dsScroll.addView(ds);
         s.addView(dsScroll, marginTop(ViewGroup.LayoutParams.WRAP_CONTENT, 6));
 
