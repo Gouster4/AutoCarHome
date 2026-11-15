@@ -95,10 +95,11 @@ public class HomeActivity extends Activity {
     private long paneLaunchedAt;
     private static final long PANE_RESCUE_MS = 10000;
     private static final long MAPS_CHECK_MS = 2000;
-    private static final long MAPS_RELAUNCH_MS = 10000;
+    private static final long MAPS_RELAUNCH_MS = 5000;        // first MAPS_FAST_TRIES relaunches
+    private static final long MAPS_RELAUNCH_SLOW_MS = 10000;     // afterwards, forever
+    private static final int MAPS_FAST_TRIES = 18;
     private static final long BOOT_ONLINE_WAIT_MS = 90000;
     private static final java.util.Set<String> ONLINE_AT_START = new java.util.HashSet<>(java.util.Arrays.asList(WAZE, MAPS));
-    private static final int MAX_MAPS_ATTEMPTS = 18;
     private int mapsAttempts;
     private long mapsLaunchedAt;
     private boolean mapsPending, mapsInterrupted, topResumed, editing;
@@ -570,15 +571,14 @@ private final Runnable restoreCompactMediaControls = () -> {
             mapsPending = false;
             return;
         }
-        if (mapsAttempts > 0 && SystemClock.uptimeMillis() - mapsLaunchedAt < MAPS_RELAUNCH_MS) {
+        // Never give up: relaunch every 5s for the first 18 tries, then every 10s forever.
+        long wait = mapsAttempts <= 0 ? 0
+                : mapsAttempts <= MAPS_FAST_TRIES ? MAPS_RELAUNCH_MS : MAPS_RELAUNCH_SLOW_MS;
+        if (mapsAttempts > 0 && SystemClock.uptimeMillis() - mapsLaunchedAt < wait) {
             main.postDelayed(mapsRetry, MAPS_CHECK_MS);
             return;
         }
-        if (++mapsAttempts > MAX_MAPS_ATTEMPTS) {
-            Log.w(TAG, "Maps window did not come up after " + MAX_MAPS_ATTEMPTS + " tries");
-            mapsPending = false;
-            return;
-        }
+        if (mapsAttempts < Integer.MAX_VALUE) mapsAttempts++;
         Log.i(TAG, "opening Maps window, try " + mapsAttempts + " (" + SystemClock.elapsedRealtime() / 1000
                 + " s after boot)");
         launchMaps();
@@ -754,7 +754,6 @@ private final Runnable restoreCompactMediaControls = () -> {
         Rect old = mapsBounds();
         String oldApp = navApp();
         prefs.edit().putString("nav_app", pkg).apply();
-        mapSlot.setText(appName(pkg) + "\nTap to open");
         rebuildPanel();
         updateMapSlot();
         resizeMaps(old, oldApp);
@@ -890,9 +889,10 @@ private final Runnable restoreCompactMediaControls = () -> {
         root.setOrientation(LinearLayout.HORIZONTAL);
         root.setBackgroundColor(BG);
 
-        mapSlot = text(appName(navApp()) + "\nTap to open", 18, DIM);
+        mapSlot = new TextClock(this);
+        applyMapSlotClock();
         mapSlot.setGravity(Gravity.CENTER);
-        mapSlot.setBackground(rounded(CARD, 16));
+        mapSlot.setBackgroundColor(BG);
         mapSlot.setOnClickListener(v -> launchMaps());
 
         root.addView(mapSlot);
@@ -900,8 +900,22 @@ private final Runnable restoreCompactMediaControls = () -> {
         return root;
     }
 
+    /** Big white digital clock shown behind the main app window. */
+    private void applyMapSlotClock() {
+        TextClock c = (TextClock) mapSlot;
+        String f = prefs.getBoolean("clock_24h", true) ? "H:mm" : "h:mm";
+        c.setFormat12Hour(f);
+        c.setFormat24Hour(f);
+        c.setTextColor(0xFFFFFFFF);
+        c.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        c.setSingleLine(true);
+        c.setIncludeFontPadding(false);
+        c.setAutoSizeTextTypeUniformWithConfiguration(24, 400, 2, TypedValue.COMPLEX_UNIT_SP);
+    }
+
     private void updateMapSlot() {
         if (mapSlot == null) return;
+        applyMapSlotClock();
         if ("top".equals(panelPos) || "bottom".equals(panelPos)) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -1556,6 +1570,7 @@ private View buildCompactMedia() {
     }
 
     private void rebuildPanel() {
+        if (mapSlot != null) applyMapSlotClock();
         panel.removeAllViews();
         panel.addView(buildPanel());
         if (panelShown) wm.updateViewLayout(panel, panelParams());
