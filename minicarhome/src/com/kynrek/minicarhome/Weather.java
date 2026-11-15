@@ -22,30 +22,46 @@ import java.util.Locale;
 final class Weather {
     final int temp, high, low, code;
     final long fetchedAt;
+    /** "c" or "f": the unit temp, high and low are in. */
+    final String unit;
 
-    private Weather(int temp, int high, int low, int code, long fetchedAt) {
+    private Weather(int temp, int high, int low, int code, long fetchedAt, String unit) {
         this.temp = temp; this.high = high; this.low = low; this.code = code; this.fetchedAt = fetchedAt;
+        this.unit = unit;
+    }
+
+    /** The same reading converted to "c" or "f" (no-op if already in that unit). */
+    Weather inUnit(String want) {
+        if (want.equals(unit)) return this;
+        boolean toC = "c".equals(want);
+        return new Weather(conv(temp, toC), conv(high, toC), conv(low, toC), code, fetchedAt, want);
+    }
+
+    private static int conv(int v, boolean toC) {
+        return (int) Math.round(toC ? (v - 32) * 5.0 / 9.0 : v * 9.0 / 5.0 + 32);
     }
 
     static Weather cached(SharedPreferences p) {
         if (!p.contains("wx_temp")) return null;
         return new Weather(p.getInt("wx_temp", 0), p.getInt("wx_high", 0), p.getInt("wx_low", 0),
-                p.getInt("wx_code", 0), p.getLong("wx_time", 0));
+                p.getInt("wx_code", 0), p.getLong("wx_time", 0),
+                "c".equals(p.getString("wx_unit", "f")) ? "c" : "f");   // caches from older versions are Fahrenheit
     }
 
     void save(SharedPreferences p) {
         p.edit().putInt("wx_temp", temp).putInt("wx_high", high).putInt("wx_low", low)
-                .putInt("wx_code", code).putLong("wx_time", fetchedAt).apply();
+                .putInt("wx_code", code).putLong("wx_time", fetchedAt).putString("wx_unit", unit).apply();
     }
 
     /** Blocking network call; run off the main thread. Returns null on any failure. */
-    static Weather fetch(Context c) {
+    static Weather fetch(Context c, String unit) {
+        unit = "f".equals(unit) ? "f" : "c";
         double[] ll = location(c);
         if (ll == null) return null;
         String url = String.format(Locale.ROOT,
                 "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"
                         + "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min"
-                        + "&temperature_unit=fahrenheit&timezone=auto&forecast_days=1", ll[0], ll[1]);
+                        + "&temperature_unit=%s&timezone=auto&forecast_days=1", ll[0], ll[1], "f".equals(unit) ? "fahrenheit" : "celsius");
         HttpURLConnection http = null;
         try {
             http = (HttpURLConnection) new URL(url).openConnection();
@@ -58,7 +74,7 @@ final class Weather {
             return new Weather((int) Math.round(cur.getDouble("temperature_2m")),
                     (int) Math.round(day.getJSONArray("temperature_2m_max").getDouble(0)),
                     (int) Math.round(day.getJSONArray("temperature_2m_min").getDouble(0)),
-                    cur.getInt("weather_code"), System.currentTimeMillis());
+                    cur.getInt("weather_code"), System.currentTimeMillis(), unit);
         } catch (Exception e) {
             return null;
         } finally {
